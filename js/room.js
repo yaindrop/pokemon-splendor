@@ -73,6 +73,8 @@
       this.conns = {};      // live connId -> seat index (>=0 seated, -1 spectator)
       this.turnStartedAt = 0; // server ms when the current turn began (idle-timeout base)
       this.now = 0;         // current server ms, injected by the DO before each handler
+      this.undoHistory = []; // authoritative snapshots at the start of each turn
+      this.undoVote = null;  // ephemeral unanimous vote; never survives a restart
     }
 
     // ----------------------------- connections -----------------------------
@@ -126,6 +128,7 @@
         this.seats[seat].connId = null;                         // keep token → seat reclaimable
       }
       delete this.conns[connId];
+      if (this.undoVote) this._cancelUndo('有玩家离线，悔棋已取消');
       this._roster();
       return reconnectToken;
     }
@@ -186,6 +189,8 @@
         case 'join':   return this.join(connId, msg.name, msg.token);
         case 'start':  return this._start(connId, msg.opts);
         case 'action': return this._action(connId, msg);
+        case 'undo-request': return this._requestUndo(connId);
+        case 'undo-vote': return this._voteUndo(connId, msg.approve);
         case 'takeover': return this._takeover(connId, msg);
         case 'leave':   return this.leaveSeat(connId);
         case 'sync':   return this._stateTo(connId);
@@ -217,6 +222,7 @@
       });
       this.started = true;
       this.turnStartedAt = this.now;
+      this.undoHistory = [serializeG(this.G)];
       this.seq++;
       this._roster();
       this._broadcastState();
@@ -227,10 +233,14 @@
       if (!this.started || seat == null || seat < 0) {
         return this.send(connId, { t: 'reject', reason: '未入座或对局未开始', seq: msg && msg.seq });
       }
+      if (this.undoVote) return this.send(connId, { t: 'reject', reason: '悔棋投票中，请先完成投票', seq: msg.seq });
       const prevTurn = this.G.turn;
       const r = E.applyAction(this.G, msg.action, seat);        // seat = ownership guard
       if (!r.ok) return this.send(connId, { t: 'reject', reason: r.error, seq: msg.seq });
-      if (this.G.turn !== prevTurn) this.turnStartedAt = this.now; // turn advanced → reset idle clock
+      if (this.G.turn !== prevTurn) {
+        this.turnStartedAt = this.now; // turn advanced → reset idle clock
+        this._rememberTurnStart();
+      }
       this.seq++;
       this._broadcastState();
       if (this.G.phase === 'gameover') this._broadcast({ t: 'over', winner: this.G.winner });
@@ -254,7 +264,7 @@
     // longer depends on the host browser staying online and submitting an AI plan.
     timeoutTurn(now, planOrFactory) {
       this.now = now;
-      if (!this.started || !this.G || this.G.phase !== 'play') return false;
+      if (!this.started || !this.G || this.G.phase !== 'play' || this.undoVote) return false;
       if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) return false;
       let plan = planOrFactory || {};
       if (typeof planOrFactory === 'function') {
@@ -264,7 +274,7 @@
     }
 
     nextTimeoutAt() {
-      if (!this.started || !this.G || this.G.phase !== 'play') return null;
+      if (!this.started || !this.G || this.G.phase !== 'play' || this.undoVote) return null;
       if (!this.seats.some((seat) => seat.connected)) return null;
       return this.turnStartedAt + TURN_TIMEOUT_MS;
     }
@@ -292,10 +302,67 @@
       else if (plan.evolution) { try { E.actionEvolve(this.G, plan.evolution.fromId, plan.evolution.toId); } catch (e) { } }
       try { E.endTurn(this.G); } catch (e) { }
       this.turnStartedAt = this.now;
+      this._rememberTurnStart();
       this.seq++;
       this._broadcastState();
       if (this.G.phase === 'gameover') this._broadcast({ t: 'over', winner: this.G.winner });
       return true;
+    }
+
+    // --------------------------- unanimous undo ---------------------------
+    _rememberTurnStart() {
+      this.undoHistory.push(serializeG(this.G));
+      if (this.undoHistory.length > 20) this.undoHistory.shift();
+    }
+
+    _undoAvailable() {
+      if (!this.started || !this.G || this.G.phase !== 'play') return false;
+      return !!this.G.acted || this.undoHistory.length > 1;
+    }
+
+    _requestUndo(connId) {
+      const seat = this.conns[connId];
+      if (seat == null || seat < 0) return this.send(connId, { t: 'reject', reason: '只有入座玩家可以发起悔棋' });
+      if (this.undoVote) return this.send(connId, { t: 'reject', reason: '已有悔棋投票进行中' });
+      if (!this._undoAvailable()) return this.send(connId, { t: 'reject', reason: '当前没有可撤销的行动' });
+      if (this.seats.some(s => !s.connected || !s.connId)) return this.send(connId, { t: 'reject', reason: '所有玩家在线时才能悔棋' });
+      this.undoVote = { requesterSeat: seat, approvals: [seat] };
+      this._broadcastUndoVote();
+    }
+
+    _voteUndo(connId, approve) {
+      const seat = this.conns[connId];
+      if (!this.undoVote || seat == null || seat < 0) return this.send(connId, { t: 'reject', reason: '当前没有待处理的悔棋投票' });
+      if (approve === false) return this._cancelUndo(`${this.seats[seat].name} 拒绝了悔棋`);
+      if (!this.undoVote.approvals.includes(seat)) this.undoVote.approvals.push(seat);
+      if (this.undoVote.approvals.length < this.seats.length) return this._broadcastUndoVote();
+
+      const midTurn = !!this.G.acted;
+      if (!midTurn) this.undoHistory.pop();
+      const snap = this.undoHistory[this.undoHistory.length - 1];
+      if (!snap) return this._cancelUndo('没有可恢复的回合');
+      this.G = reattachG(snap, this.DB, this.megaDB, this.pokemartDB);
+      this.G.log.push({ turn: this.G.turn, round: this.G.round, msg: '↩️ 全员同意，已撤销上一回合', kind: 'undo' });
+      this.undoHistory[this.undoHistory.length - 1] = serializeG(this.G);
+      this.undoVote = null;
+      this.turnStartedAt = this.now;
+      this.seq++;
+      this._broadcast({ t: 'undo-result', accepted: true, reason: '全员同意，悔棋成功' });
+      this._broadcastState();
+      return true;
+    }
+
+    _broadcastUndoVote() {
+      const vote = this.undoVote;
+      if (!vote) return;
+      this._broadcast({ t: 'undo-vote', requesterSeat: vote.requesterSeat, approvals: vote.approvals.slice(), total: this.seats.length });
+    }
+
+    _cancelUndo(reason) {
+      if (!this.undoVote) return false;
+      this.undoVote = null;
+      this._broadcast({ t: 'undo-result', accepted: false, reason: reason || '悔棋已取消' });
+      return false;
     }
 
     // ------------------------------- outbound ------------------------------
@@ -307,6 +374,7 @@
       this.send(connId, {
         t: 'state', seq: this.seq, state: E.redactFor(this.G, view),
         turnStartedAt: this.turnStartedAt, serverNow: this.now, turnTimeoutMs: TURN_TIMEOUT_MS,
+        undoAvailable: this._undoAvailable(),
       });
     }
     _roster() {
@@ -322,7 +390,11 @@
     // so reconnecting players reclaim their seat and hidden hand.
     snapshot() {
       const seats = this.seats.map(s => ({ token: s.token, name: s.name, connId: null, connected: false }));
-      return { seq: this.seq, started: this.started, seats, turnStartedAt: this.turnStartedAt, g: this.G ? serializeG(this.G) : null };
+      return {
+        seq: this.seq, started: this.started, seats, turnStartedAt: this.turnStartedAt,
+        g: this.G ? serializeG(this.G) : null,
+        undoHistory: this.undoHistory.slice(-20),
+      };
     }
     restore(snap) {
       if (!snap) return;
@@ -332,6 +404,8 @@
       this.seats = (snap.seats || []).map(s => ({ token: s.token, name: s.name, connId: null, connected: false }));
       this.conns = {};
       this.G = snap.g ? reattachG(snap.g, this.DB, this.megaDB, this.pokemartDB) : null;
+      this.undoHistory = Array.isArray(snap.undoHistory) ? snap.undoHistory.slice(-20) : (this.G ? [serializeG(this.G)] : []);
+      this.undoVote = null;
     }
   }
 

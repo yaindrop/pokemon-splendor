@@ -56,6 +56,8 @@ test('take 3 distinct works; duplicates rejected', () => {
   assert.ok(E.actionTake(g, ['red', 'blue', 'black']).ok);
   assert.strictEqual(g.players[0].tokens.red, 1);
   assert.strictEqual(g.supply.red, 3);
+  assert.strictEqual(g.log[g.log.length - 1].kind, 'take');
+  assert.deepStrictEqual(g.log[g.log.length - 1].colors, ['red', 'blue', 'black']);
   const g2 = E.createGame(DB, { numPlayers: 2, seed: 2 });
   assert.ok(!E.actionTake(g2, ['red', 'red', 'blue']).ok);
   assert.ok(!E.actionTake(g2, ['purple']).ok); // cannot take master
@@ -104,6 +106,8 @@ test('capture pays cost, applies bonuses & master substitution', () => {
   const r = E.actionCapture(g, target.id);
   assert.ok(r.ok, r.error);
   assert.ok(p.board.includes(target.id));
+  assert.strictEqual(g.log[g.log.length - 1].kind, 'capture');
+  assert.strictEqual(g.log[g.log.length - 1].cardId, target.id);
   const totalCost = E.COLORS.reduce((a, c) => a + target.cost[c], 0);
   assert.strictEqual(E.tokenTotal(p), before - totalCost);
 });

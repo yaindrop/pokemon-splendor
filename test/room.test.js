@@ -328,5 +328,61 @@ test('the server can advance any timed-out turn without a host client', () => {
   assert.strictEqual(last('cB', 'state').state.turn, 1);
 });
 
+test('multiplayer undo restores the previous turn only after every player agrees', () => {
+  const { room, last, clear } = makeRoom();
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.onMessage('cA', { t: 'start', opts: {} });
+  room.onMessage('cA', { t: 'action', seq: 1, action: TAKE });
+  room.onMessage('cA', { t: 'action', seq: 2, action: { type: 'endTurn' } });
+  assert.strictEqual(last('cB', 'state').state.turn, 1);
+  clear();
+
+  room.onMessage('cB', { t: 'undo-request' });
+  const vote = last('cA', 'undo-vote');
+  assert.strictEqual(vote.requesterSeat, 1);
+  assert.deepStrictEqual(vote.approvals, [1]);
+  assert.ok(!last('cA', 'state'), 'request alone must not change game state');
+
+  room.onMessage('cA', { t: 'undo-vote', approve: true });
+  assert.strictEqual(last('cA', 'undo-result').accepted, true);
+  const restored = last('cB', 'state').state;
+  assert.strictEqual(restored.turn, 0);
+  assert.strictEqual(restored.players[0].tokens.red, 0);
+});
+
+test('one rejection cancels multiplayer undo without changing state', () => {
+  const { room, last, clear } = makeRoom();
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.onMessage('cA', { t: 'start', opts: {} });
+  room.onMessage('cA', { t: 'action', seq: 1, action: TAKE });
+  clear();
+
+  room.onMessage('cA', { t: 'undo-request' });
+  room.onMessage('cB', { t: 'undo-vote', approve: false });
+  const result = last('cA', 'undo-result');
+  assert.strictEqual(result.accepted, false);
+  room.onMessage('cA', { t: 'sync' });
+  assert.strictEqual(last('cA', 'state').state.players[0].tokens.red, 1);
+});
+
+test('a disconnect cancels a pending undo vote', () => {
+  const { room, last, clear } = makeRoom();
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.onMessage('cA', { t: 'start', opts: {} });
+  room.onMessage('cA', { t: 'action', seq: 1, action: TAKE });
+  room.onMessage('cA', { t: 'undo-request' });
+  clear();
+
+  room.leave('cB');
+  const result = last('cA', 'undo-result');
+  assert.strictEqual(result.accepted, false);
+  assert.match(result.reason, /离线/);
+  room.onMessage('cA', { t: 'action', seq: 2, action: { type: 'endTurn' } });
+  assert.strictEqual(last('cA', 'state').state.turn, 1, 'normal play resumes after cancellation');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

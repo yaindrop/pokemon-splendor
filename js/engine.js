@@ -251,8 +251,8 @@
       if (slots[i] == null && s.decks[tier].length) slots[i] = s.decks[tier].pop();
     }
   }
-  function log(s, msg) {
-    s.log.push({ turn: s.turn, round: s.round, msg });
+  function log(s, msg, detail) {
+    s.log.push(Object.assign({ turn: s.turn, round: s.round, msg }, detail || {}));
     if (s.log.length > 200) s.log.splice(0, s.log.length - 200); // bound growth (persisted + broadcast online)
   }
 
@@ -350,7 +350,7 @@
     for (const c of colors) { s.supply[c]--; p.tokens[c]++; }
     s.acted = true;
     s.taken = colors.slice();
-    log(s, `${p.name} 拿取 ${colors.map(zhBall).join('、')}`);
+    log(s, `${p.name} 拿取 ${colors.map(zhBall).join('、')}`, { kind: 'take', colors: colors.slice() });
     return { ok: true };
   }
 
@@ -537,7 +537,7 @@
     s.acted = true;
     const extra = spend.length ? `，弃${spend.length}图鉴抵${spend.length * 2}万能` : '';
     const asc = assocColor ? `，关联${zhBall(assocColor)}` : '';
-    log(s, `${p.name} 捕捉了 ${card.name}（${payDesc(payment.pay)}${extra}${asc}）`);
+    log(s, `${p.name} 捕捉了 ${card.name}（${payDesc(payment.pay)}${extra}${asc}）`, { kind: 'capture', cardId });
     if (freeSteps && freeSteps.length) execFree(s, p, freeSteps);
     return { ok: true };
   }

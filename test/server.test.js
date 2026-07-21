@@ -50,6 +50,9 @@ function messageOfType(ws, type) {
     assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'capture', cardId: 's1_01', opts: { injected: true } } }), false);
     assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'endTurn', injected: true } }), false);
     assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'endTurn' } }), true);
+    assert.strictEqual(validMessage({ t: 'undo-request' }), true);
+    assert.strictEqual(validMessage({ t: 'undo-vote', approve: true }), true);
+    assert.strictEqual(validMessage({ t: 'undo-vote', approve: 'yes' }), false);
   });
 
   await test('FileRoomStore persists, reloads, and deletes a room snapshot', async () => {

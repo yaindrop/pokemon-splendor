@@ -142,7 +142,7 @@
     const name = (($('[data-name="0"]') && $('[data-name="0"]').value.trim()) || '训练家');
     gameEpoch++;
     UI = { pick: [], selCard: null, selDeck: null, phase: 'main', busy: false, humans: 0, hasAI: false,
-           net: { code, name, seat: null, host: !!asHost, status: 'connecting', started: false, roster: [] } };
+           net: { code, name, seat: null, host: !!asHost, status: 'connecting', started: false, roster: [], undoAvailable: false, undoVote: null } };
     try { history.replaceState(null, '', location.pathname + '?room=' + code); } catch (e) { }
     $('#setup').classList.add('hidden'); $('#game').classList.add('hidden');
     $('#lobby').classList.remove('hidden');
@@ -157,6 +157,18 @@
     Net.on('roster', (m) => { if (UI.net) { UI.net.roster = m.players || []; UI.net.started = m.started; renderLobby(); } });
     Net.on('state', onNetState);
     Net.on('reject', (m) => { flashHint((m && m.reason) || '操作被拒绝'); });
+    Net.on('undo-vote', (m) => {
+      if (!UI.net) return;
+      UI.net.undoVote = m;
+      renderUndoVote(); updateUndoBtn();
+      setLogOpen(true);
+    });
+    Net.on('undo-result', (m) => {
+      if (!UI.net) return;
+      UI.net.undoVote = null;
+      renderUndoVote(); updateUndoBtn();
+      flashHint((m && m.reason) || (m && m.accepted ? '悔棋成功' : '悔棋已取消'));
+    });
     Net.on('over', () => { });
   }
   function renderLobby() {
@@ -195,6 +207,7 @@
     UI.net.turnStartedAt = m.turnStartedAt || 0;
     UI.net.serverNow = m.serverNow || 0;
     UI.net.turnTimeoutMs = m.turnTimeoutMs || 180000;
+    UI.net.undoAvailable = !!m.undoAvailable;
     UI.net.stateAt = Date.now();
     $('#setup').classList.add('hidden'); $('#lobby').classList.add('hidden');
     $('#game').classList.remove('hidden');
@@ -333,7 +346,7 @@
 
   // ---------------------------------------------------------------- render
   function render() {
-    renderBanner(); renderField(); renderMyResources(); renderSupply(); renderActionBar(); renderPlayers(); renderLog();
+    renderBanner(); renderField(); renderSupply(); renderActionBar(); renderPlayers(); renderLog();
     updateUndoBtn();   // keep 悔棋 button consistent with phase/turn on every state change
     evalRotateHint();  // show/hide the portrait "rotate" hint
     syncDockH();       // keep mobile bottom-dock clearance in sync with its current height
@@ -341,30 +354,23 @@
     if (window.Tutorial && Tutorial.onRender) { try { Tutorial.onRender(G, UI); } catch (e) { } } // drive the tutorial coach
   }
 
-  // active player's held tokens + permanent bonus discounts, pinned in the dock so you
-  // never have to scroll to your own panel to plan a purchase.
-  function renderMyResources() {
-    const host = $('#my-resources'); if (!host) return;
-    const p = me();
-    if (!p || p.isAI || G.phase === 'gameover') { host.innerHTML = ''; host.style.display = 'none'; return; }
-    host.style.display = '';
-    const b = E.bonuses(G, p);
-    let chips = '';
-    for (const c of E.COLORS) {
-      chips += `<div class="mychip"><div class="ball ${c} sm"></div><span class="mc-tok">${p.tokens[c]}</span><span class="mc-bon">+${b[c]}</span></div>`;
-    }
-    chips += `<div class="mychip"><div class="ball purple sm"></div><span class="mc-tok">${p.tokens.purple}</span></div>`;
-    if (G.megasEnabled) chips += `<div class="mychip"><div class="ball mega-token sm"></div><span class="mc-tok">${p.megaToken}</span></div>`;
-    host.innerHTML = `<span class="mc-label">我的资源 · ${escapeHTML(p.name)}</span><div class="mychips">${chips}</div>`;
-  }
-
   function renderBanner() {
     const p = isOnline() ? G.players[G.turn] : me();
-    let txt;
-    if (G.phase === 'gameover') txt = '游戏结束';
-    else if (p.isAI) txt = `${escapeHTML(p.name)} 的回合 · <span class="thinking">思考中<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
-    else txt = `${escapeHTML(p.name)} 的回合${isOnline() && myTurn() ? '（你）' : ''}${G.lastRound ? ' · ⚠ 最后一轮' : ''}`;
-    $('#turn-banner').innerHTML = txt;
+    const banner = $('#turn-banner');
+    let state = 'turn-wait', icon = '◈', kicker = '对手回合', main, sub = '牌桌会在对方行动后自动同步';
+    if (G.phase === 'gameover') {
+      state = 'turn-over'; icon = '★'; kicker = '对局结束'; main = '胜负已定'; sub = '查看最终得分与宝可梦阵容';
+    } else if (p.isAI) {
+      state = 'turn-ai'; icon = '✦'; kicker = '电脑回合'; main = `${escapeHTML(p.name)} 正在思考`; sub = '<span class="thinking">计算行动<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+    } else if (isOnline() && myTurn()) {
+      state = 'turn-mine'; icon = '⚡'; kicker = '你的回合'; main = '轮到你了，请选择行动'; sub = '拿取精灵球 · 捕捉宝可梦 · 保留卡牌';
+    } else if (isOnline()) {
+      main = `${escapeHTML(p.name)} 正在行动`;
+    } else {
+      state = 'turn-mine'; icon = '⚡'; kicker = '训练家回合'; main = `${escapeHTML(p.name)}，请选择行动`; sub = '拿取精灵球 · 捕捉宝可梦 · 保留卡牌';
+    }
+    banner.className = `turn-banner ${state}`;
+    banner.innerHTML = `<span class="turn-beacon" aria-hidden="true">${icon}</span><span class="turn-copy"><span class="turn-kicker">${kicker}</span><strong>${main}</strong><small>${sub}</small></span>${G.lastRound && G.phase === 'play' ? '<span class="last-round">最后一轮</span>' : ''}`;
   }
 
   function renderField() {
@@ -540,27 +546,27 @@
   function renderSupply() {
     const counts = {}; UI.pick.forEach(c => counts[c] = (counts[c] || 0) + 1);
     const human = (isOnline() ? myTurn() : isHuman(G.turn)) && G.phase === 'play' && UI.phase === 'main' && !G.acted;
-    let html = '<div class="panel-title">精灵球供应</div>';
+    let html = `<div class="panel-title"><span>精灵球补给</span><small>${human ? '点击选择' : '当前库存'}</small></div>`;
     for (const color of E.ALL_TOKENS) {
       const isMaster = color === 'purple';
       const pick = counts[color] || 0;
       const selectable = human && !isMaster && canAddBall(color);
       const dis = (!human || isMaster || (!selectable && !pick)) ? ' disabled' : '';
-      html += `<div class="supply-row${pick ? ' picked' : ''}${dis}" ${(!isMaster) ? `data-color="${color}"` : ''}>
+      html += `<button type="button" class="supply-row${pick ? ' picked' : ''}${dis}" data-supply-color="${color}" ${(!isMaster) ? `data-color="${color}"` : ''} ${!selectable ? 'disabled' : ''} aria-label="${BALL_NAMES[color]}，库存 ${G.supply[color]}">
                  ${ball(color, '')}
                  <span class="name">${BALL_NAMES[color]}</span>
-                 ${pick ? `<span class="picked-n">+${pick}</span>` : ''}
-                 <span class="cnt">${G.supply[color]}</span>
-               </div>`;
+                 ${pick ? `<span class="picked-n">已选 ${pick}</span>` : ''}
+                 <span class="cnt" title="库存数量">${G.supply[color]}</span>
+               </button>`;
     }
     if (G.megasEnabled) {
       const canTake = human && me().megaToken < 1 && G.supply.megaToken > 0;
       const held = me().megaToken;
-      html += `<div class="supply-row mega-row${canTake ? '' : ' disabled'}" ${canTake ? 'data-take-mega="1"' : ''} title="花费整个回合获得1个 Mega 代币">
+      html += `<button type="button" class="supply-row mega-row${canTake ? '' : ' disabled'}" data-supply-color="mega" ${canTake ? 'data-take-mega="1"' : 'disabled'} title="花费整个回合获得1个 Mega 代币">
                  <div class="ball mega-token"></div>
                  <span class="name">Mega 代币${held ? '（已持有）' : ''}</span>
                  <span class="cnt">${G.supply.megaToken}</span>
-               </div>`;
+               </button>`;
     }
     $('#supply').innerHTML = html;
   }
@@ -642,7 +648,7 @@
         <div class="act-buttons"><button class="primary" data-act="reserve-deck">保留牌堆顶</button><button class="ghost" data-act="clear-sel">取消</button></div>`;
       return;
     }
-    bar.innerHTML = `<div class="act-hint">轮到你了。请选择一种行动：<br>· 点击精灵球拿取（3 异色 / 2 同色）<br>· 点击卡牌进行<b>捕捉</b>或<b>保留</b></div>`;
+    bar.innerHTML = `<div class="act-hint"><b>选择行动</b><br>点击补给区拿球，或点击牌桌上的卡牌进行捕捉、保留。</div>`;
   }
 
   function dedupeEvo(opts) {
@@ -715,8 +721,18 @@
   }
 
   function renderLog() {
-    const lines = G.log.slice(-40).map(l => `<div class="ln">${escapeHTML(l.msg)}</div>`).join('');
-    const box = $('#log-lines'); box.innerHTML = lines; box.scrollTop = box.scrollHeight;
+    const lines = G.log.slice(-40).map(l => {
+      let thumbs = '';
+      if (l.kind === 'take' && Array.isArray(l.colors)) {
+        thumbs = `<span class="log-thumbs">${l.colors.map(c => E.ALL_TOKENS.includes(c)
+          ? `<span class="log-thumb ball-thumb ball ${c}" title="${BALL_NAMES[c]}"></span>` : '').join('')}</span>`;
+      } else if (l.kind === 'capture' && byId[l.cardId]) {
+        const card = byId[l.cardId];
+        thumbs = `<span class="log-thumbs"><img class="log-thumb" src="${card.img}" alt="${escapeHTML(card.name)}" title="悬停查看 ${escapeHTML(card.name)}" data-zoom="${card.img}"></span>`;
+      }
+      return `<div class="ln">${thumbs}<span>${escapeHTML(l.msg)}</span></div>`;
+    }).join('');
+    const box = $('#log-lines'); box.innerHTML = lines || '<div class="log-empty">行动后，记录会出现在这里。</div>'; box.scrollTop = box.scrollHeight;
   }
 
   // ---------------------------------------------------------------- interactions
@@ -733,7 +749,7 @@
     if (!interactable()) return;
     UI.selDeck = tier; UI.selCard = null; render();
   }
-  function interactable() { return G && G.phase === 'play' && UI.phase === 'main' && !G.acted && !me().isAI && !UI.busy && (!isOnline() || myTurn()); }
+  function interactable() { return G && G.phase === 'play' && UI.phase === 'main' && !G.acted && !me().isAI && !UI.busy && (!isOnline() || (myTurn() && !UI.net.undoVote)); }
 
   // ---------------------------------------------------------------- animations
   const ANIM_MS = 620;
@@ -939,8 +955,24 @@
   }
   function updateUndoBtn() {
     const btn = $('#undo-btn'); if (!btn) return;
-    const show = UI.hasAI && UI.humans === 1 && G && G.phase === 'play' && UI.phase === 'main' && !me().isAI && !UI.busy && undoStack.length >= 2;
+    const show = isOnline()
+      ? !!(G && G.phase === 'play' && UI.net.seat >= 0 && UI.net.undoAvailable && !UI.net.undoVote)
+      : !!(UI.hasAI && UI.humans === 1 && G && G.phase === 'play' && UI.phase === 'main' && !me().isAI && !UI.busy && undoStack.length >= 2);
     btn.classList.toggle('hidden', !show);
+    renderUndoVote();
+  }
+  function renderUndoVote() {
+    const box = $('#undo-vote'); if (!box) return;
+    const vote = isOnline() && UI.net.undoVote;
+    box.classList.toggle('hidden', !vote);
+    if (!vote) { box.innerHTML = ''; return; }
+    const requester = (UI.net.roster || []).find(p => p.seat === vote.requesterSeat);
+    const mine = UI.net.seat;
+    const approved = Array.isArray(vote.approvals) && vote.approvals.includes(mine);
+    const progress = `${(vote.approvals || []).length}/${vote.total || G.numPlayers} 已同意`;
+    box.innerHTML = `<div><b>${escapeHTML(requester ? requester.name : `玩家 ${vote.requesterSeat + 1}`)}</b> 发起悔棋</div>
+      <div class="vote-progress">${progress} · 需要全员同意</div>
+      ${approved ? '<div class="vote-waiting">你已同意，等待其他玩家…</div>' : '<div class="vote-actions"><button class="primary" data-undo-vote="yes">同意</button><button class="ghost" data-undo-vote="no">拒绝</button></div>'}`;
   }
   function doDiscard(color) {
     if (UI.phase !== 'discard') return;
@@ -1187,7 +1219,11 @@
     if ($('#lobby-copy')) $('#lobby-copy').addEventListener('click', () => { try { navigator.clipboard.writeText(location.href); flashHint('邀请链接已复制'); } catch (e) { flashHint(location.href); } });
     if ($('#tutorial-btn')) $('#tutorial-btn').addEventListener('click', () => { if (window.Tutorial) Tutorial.start('base'); });
     if ($('#tutorial-mega-btn')) $('#tutorial-mega-btn').addEventListener('click', () => { if (window.Tutorial) Tutorial.start('megas'); });
-    $('#undo-btn').addEventListener('click', doUndo);
+    $('#undo-btn').addEventListener('click', () => { if (isOnline()) Net.requestUndo(); else doUndo(); });
+    $('#undo-vote').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-undo-vote]');
+      if (b && isOnline()) Net.voteUndo(b.dataset.undoVote === 'yes');
+    });
     $('#rules-btn').addEventListener('click', () => $('#rules-modal').classList.remove('hidden'));
     $('#rules-modal').addEventListener('click', (e) => { if (e.target.id === 'rules-modal' || e.target.classList.contains('close-rules')) $('#rules-modal').classList.add('hidden'); });
     $('#menu-btn').addEventListener('click', () => {
@@ -1224,11 +1260,14 @@
       if (ia) { const a = ia.dataset.inspectAct; closeInspect(); if (a === 'capture') doCapture(); else if (a === 'reserve-card') doReserveCard(); return; }
       if (e.target.id === 'inspect' || e.target.closest('[data-inspect-close]')) closeInspect();
     });
-    $('#log-toggle') && $('#log-toggle').addEventListener('click', (e) => {
-      const collapsed = $('#log').classList.toggle('collapsed');
-      e.target.textContent = collapsed ? '展开' : '收起';
-      e.target.setAttribute('aria-expanded', String(!collapsed));
-    });
+    const setLogOpen = (open) => {
+      $('#log').classList.toggle('open', open);
+      $('#log').setAttribute('aria-hidden', String(!open));
+      $('#log-btn').setAttribute('aria-expanded', String(open));
+    };
+    $('#log-btn').addEventListener('click', () => setLogOpen(!$('#log').classList.contains('open')));
+    $('#log-close').addEventListener('click', () => setLogOpen(false));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setLogOpen(false); });
     $('#action-bar').addEventListener('click', (e) => {
       if (e.target.closest('.sel-preview')) { if (UI.selCard) openInspect(byId[UI.selCard].img, inspectActionsFor(UI.selCard)); return; }
       const b = e.target.closest('[data-act],[data-discard],[data-evo-from],[data-mega]'); if (!b) return;

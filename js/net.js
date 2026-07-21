@@ -66,6 +66,8 @@
   function action(move) { send({ t: 'action', seq: ++seq, action: move }); }
   function start(opts) { send({ t: 'start', opts: opts || {} }); }
   function sync() { send({ t: 'sync' }); }
+  function requestUndo() { send({ t: 'undo-request' }); }
+  function voteUndo(approve) { send({ t: 'undo-vote', approve: !!approve }); }
   function teardown(delay) {
     closedByUs = true; clearTimeout(reconnect); stopBeat();
     const leaving = ws; ws = null;
@@ -82,5 +84,5 @@
     return body.code;
   }
 
-  window.Net = { connect, on, send, action, start, sync, close, leave, createRoom, isOpen: () => !!(ws && ws.readyState === 1) };
+  window.Net = { connect, on, send, action, start, sync, requestUndo, voteUndo, close, leave, createRoom, isOpen: () => !!(ws && ws.readyState === 1) };
 })();

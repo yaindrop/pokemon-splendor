@@ -97,16 +97,19 @@
 
   <!-- ===== Game screen ===== -->
   <div id="game" class="screen hidden">
-    <header id="topbar">
-      <div class="topbar-left">
-        <span class="brand-mini">璀璨宝石 · 宝可梦</span>
-      </div>
-      <div id="turn-banner"></div>
-      <div class="topbar-right">
-        <button id="menu-btn" class="ghost small">菜单</button>
-      </div>
-    </header>
-    <div id="idle-bar" class="idle-bar"></div>
+    <div id="game-head">
+      <header id="topbar">
+        <div class="topbar-left">
+          <span class="brand-mini">璀璨宝石 · 宝可梦</span>
+        </div>
+        <div class="topbar-right">
+          <button id="log-btn" class="ghost small topbar-action" aria-controls="log" aria-expanded="false"><span aria-hidden="true">◷</span><span>记录</span></button>
+          <button id="menu-btn" class="ghost small topbar-action"><span aria-hidden="true">☰</span><span>菜单</span></button>
+        </div>
+      </header>
+      <div id="turn-banner" class="turn-banner" role="status" aria-live="polite"></div>
+      <div id="idle-bar" class="idle-bar"></div>
+    </div>
 
     <main id="board">
       <section id="field"></section>
@@ -114,18 +117,21 @@
 
     <footer id="players"></footer>
 
-    <div id="log" class="panel">
-      <div class="panel-title">游戏记录 <button id="log-toggle" class="ghost small" aria-expanded="true">收起</button></div>
+    <aside id="log" class="panel log-drawer" aria-hidden="true" aria-label="游戏记录">
+      <div class="panel-title"><span><span aria-hidden="true">◷</span> 游戏记录</span><button id="log-close" class="ghost small" aria-label="关闭游戏记录">×</button></div>
       <div id="log-lines"></div>
-    </div>
+      <div class="log-tools">
+        <div class="log-tools-title">对局功能</div>
+        <button id="undo-btn" class="ghost hidden"><span aria-hidden="true">↶</span><span>悔棋</span></button>
+        <div id="undo-vote" class="undo-vote hidden" aria-live="polite"></div>
+      </div>
+    </aside>
 
     <div id="controls">
-      <div id="my-resources" class="panel"></div>
       <div id="supply" class="panel"></div>
       <div id="action-bar" class="panel"></div>
     </div>
 
-    <button id="undo-btn" class="hidden"><i class="ti ti-arrow-back-up" aria-hidden="true"></i>悔棋</button>
   </div>
 
   <!-- card inspect overlay (tap to enlarge on touch) -->

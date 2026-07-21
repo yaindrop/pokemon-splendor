@@ -13,7 +13,7 @@ const { isRoomCode, randomRoomCode } = require('./room-code.js');
 const ROOM_PATH = /^\/room\/([^/]+)\/ws$/;
 const MAX_CONNECTIONS_PER_ROOM = 12;
 const MAX_MESSAGE_BYTES = 8192;
-const MUTATING_MESSAGES = new Set(['join', 'start', 'action', 'leave']);
+const MUTATING_MESSAGES = new Set(['join', 'start', 'action', 'leave', 'undo-request', 'undo-vote']);
 
 function json(response, status, body) {
   const data = JSON.stringify(body);
@@ -38,13 +38,14 @@ function normalizeName(value) {
 
 function validMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) return false;
-  if (!['ping', 'join', 'start', 'action', 'sync', 'leave'].includes(message.t)) return false;
+  if (!['ping', 'join', 'start', 'action', 'sync', 'leave', 'undo-request', 'undo-vote'].includes(message.t)) return false;
   if (message.t === 'join') {
     return (message.name == null || typeof message.name === 'string') &&
       (message.token == null || (typeof message.token === 'string' && /^[a-f0-9]{64}$/.test(message.token)));
   }
   if (message.t === 'action') return Number.isSafeInteger(message.seq) && message.seq > 0 &&
     Engine.validActionShape(message.action);
+  if (message.t === 'undo-vote') return typeof message.approve === 'boolean';
   if (message.t === 'start') {
     if (message.opts == null) return true;
     if (typeof message.opts !== 'object' || Array.isArray(message.opts)) return false;

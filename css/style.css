@@ -121,33 +121,47 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
 /* ---------- game shell ---------- */
 #game{min-height:var(--app-h)}
-#topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:calc(8px + var(--sa-t)) max(14px,var(--sa-r)) 8px max(14px,var(--sa-l));background:rgba(10,13,40,.78);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;backdrop-filter:blur(6px)}
+#game-head{position:sticky;top:0;z-index:30;background:rgba(10,13,40,.94);backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(4,6,24,.24)}
+#topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:calc(8px + var(--sa-t)) max(14px,var(--sa-r)) 8px max(14px,var(--sa-l));border-bottom:1px solid rgba(255,255,255,.08)}
 .brand-mini{font-weight:800;color:var(--gold);letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#turn-banner{font-weight:800;font-size:clamp(13px,3.6vw,16px);padding:6px 14px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);text-align:center;flex:1 1 auto;min-width:0}
-.topbar-left,.topbar-right{flex:0 0 auto}
+.topbar-left{min-width:0}
+.topbar-right{display:flex;align-items:center;gap:8px;flex:none}
+.topbar-action{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.turn-banner{--turn-accent:var(--gold);min-height:76px;padding:11px max(18px,var(--sa-r)) 11px max(18px,var(--sa-l));display:flex;align-items:center;justify-content:center;gap:13px;position:relative;overflow:hidden;border-bottom:1px solid rgba(255,255,255,.12);isolation:isolate}
+.turn-banner::before{content:"";position:absolute;inset:-90% 55% -90% -10%;z-index:-1;transform:skewX(-18deg);background:linear-gradient(90deg,rgba(255,255,255,.18),transparent)}
+.turn-mine{--turn-accent:#ffe66a;background:linear-gradient(105deg,#153f96 0%,#2f6fd6 52%,#274aab 100%);box-shadow:inset 0 -3px 0 rgba(255,230,106,.72)}
+.turn-wait{--turn-accent:#8edcff;background:linear-gradient(105deg,#172c68 0%,#244d99 55%,#283d7e 100%);box-shadow:inset 0 -3px 0 rgba(142,220,255,.55)}
+.turn-ai{--turn-accent:#d8b5ff;background:linear-gradient(105deg,#32206f 0%,#6137a0 58%,#3d267c 100%);box-shadow:inset 0 -3px 0 rgba(216,181,255,.6)}
+.turn-over{--turn-accent:#91f0b6;background:linear-gradient(105deg,#14523c 0%,#21885d 58%,#195c48 100%);box-shadow:inset 0 -3px 0 rgba(145,240,182,.65)}
+.turn-beacon{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex:none;color:#10183f;background:var(--turn-accent);box-shadow:0 0 0 6px rgba(255,255,255,.1),0 8px 18px rgba(5,9,32,.3);font-size:24px}
+.turn-copy{display:flex;flex-direction:column;align-items:flex-start;min-width:0;line-height:1.15}
+.turn-kicker{font-size:10px;font-weight:900;letter-spacing:2px;color:var(--turn-accent);text-transform:uppercase;margin-bottom:3px}
+.turn-copy strong{font-size:clamp(17px,2.1vw,23px);letter-spacing:.3px;color:#fff}
+.turn-copy small{font-size:12px;color:rgba(255,255,255,.76);font-weight:650;margin-top:5px}
+.last-round{flex:none;background:var(--turn-accent);color:#18204a;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:900;box-shadow:0 3px 10px rgba(0,0,0,.2)}
 #board{min-width:0}
 #field{display:flex;flex-direction:column;gap:10px}
 #controls{display:flex;flex-direction:column;gap:14px}
 
-/* desktop / large tablet: board left, controls + log right, players full-width */
+/* desktop / large tablet: a centered card table + narrow vertical supply rail */
 @media (min-width:861px){
+  :root{--card-w:clamp(86px,7.4vw,118px)}
   #game{display:grid;gap:14px;padding:14px;
-    grid-template-columns:minmax(0,1fr) 340px;
+    grid-template-columns:minmax(0,1fr) 238px;
     grid-template-areas:
-      "topbar  topbar"
+      "head    head"
       "board   controls"
-      "board   log"
       "players players";}
-  #topbar{grid-area:topbar;margin:-14px -14px 0;border-radius:0}
-  #board{grid-area:board}
+  #game-head{grid-area:head;margin:-14px -14px 0}
+  #board{grid-area:board;display:flex;justify-content:center;align-items:flex-start}
+  #field{width:max-content;max-width:100%}
   #controls{grid-area:controls}
-  #log{grid-area:log;align-self:start}
   #players{grid-area:players}
   #inspect{display:none !important}
 }
 
 /* field rows */
-.tier-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--radius);padding:8px}
+.tier-row{display:flex;align-items:center;gap:10px;width:max-content;max-width:100%;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--radius);padding:8px}
 .tier-label{writing-mode:vertical-rl;text-orientation:upright;font-weight:800;font-size:13px;color:var(--muted);letter-spacing:3px;width:24px;text-align:center;flex:none}
 .tier-special .tier-label{color:var(--gold)}
 .deck-pile{flex:none;width:var(--card-w);height:var(--card-h);border-radius:10px;border:2px dashed var(--line);display:grid;place-items:center;position:relative;background:linear-gradient(135deg,#222a63,#161b42);background-size:cover;background-position:center;cursor:default;overflow:hidden}
@@ -205,16 +219,27 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .ball.lg{width:42px;height:42px}
 
 /* ---------- supply ---------- */
-#supply{display:flex;flex-direction:column;gap:8px}
+#supply{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 10px 14px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
 .panel-title{font-weight:800;color:var(--muted);font-size:13px;margin-bottom:8px;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.supply-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:10px;cursor:pointer;transition:.12s;min-height:48px}
-.supply-row.disabled{opacity:.4;cursor:not-allowed}
-.supply-row.picked{background:rgba(255,213,74,.18);box-shadow:inset 0 0 0 1px var(--gold)}
-.supply-row .name{flex:1;font-size:13px}
-.supply-row .cnt{font-weight:800;font-size:18px;min-width:24px;text-align:right}
-.supply-row .picked-n{color:var(--gold);font-weight:800;font-size:13px}
-@media (hover:hover) and (pointer:fine){ .supply-row:not(.disabled):hover{background:var(--panel2)} }
+.panel-title small{font-size:10px;font-weight:700;letter-spacing:0;color:var(--muted);opacity:.72}
+#supply .panel-title{width:100%;margin-bottom:2px}
+.supply-row{--supply-accent:74,112,214;width:98px;height:98px;aspect-ratio:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px 6px;border-radius:16px;color:var(--ink);cursor:pointer;transition:.14s transform,.14s border-color,.14s box-shadow;background:radial-gradient(circle at 50% 35%,rgba(var(--supply-accent),.22),transparent 54%),#11163a;border:1px solid rgba(var(--supply-accent),.58);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 5px 12px rgba(4,7,25,.24)}
+.supply-row[data-supply-color="red"]{--supply-accent:227,53,13}
+.supply-row[data-supply-color="blue"]{--supply-accent:47,111,214}
+.supply-row[data-supply-color="black"]{--supply-accent:145,151,166}
+.supply-row[data-supply-color="pink"]{--supply-accent:240,111,160}
+.supply-row[data-supply-color="yellow"]{--supply-accent:244,192,37}
+.supply-row[data-supply-color="purple"]{--supply-accent:163,117,231}
+.supply-row[data-supply-color="mega"]{--supply-accent:255,213,74}
+.supply-row:disabled,.supply-row.disabled{opacity:.76;cursor:default;filter:saturate(.72)}
+.supply-row.picked{border-color:var(--gold);box-shadow:inset 0 0 0 2px var(--gold),0 0 18px rgba(255,213,74,.3)}
+.supply-row .ball{width:42px;height:42px}
+.supply-row .name{max-width:88px;font-size:11px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.supply-row .cnt{position:absolute;top:7px;right:7px;min-width:25px;height:25px;padding:0 5px;border-radius:9px;display:grid;place-items:center;background:rgba(5,8,28,.82);border:1px solid rgba(255,255,255,.18);font-weight:900;font-size:14px;color:#fff;line-height:1}
+.supply-row .picked-n{position:absolute;left:50%;bottom:5px;transform:translateX(-50%);color:#312300;background:var(--gold);border-radius:999px;padding:2px 7px;font-weight:900;font-size:9px;white-space:nowrap}
+.supply-row.mega-row{margin:3px 0 0;border-top:1px solid rgba(var(--supply-accent),.58);padding-top:8px}
+@media (hover:hover) and (pointer:fine){ .supply-row:not(:disabled):hover{transform:translateY(-3px);border-color:rgb(var(--supply-accent));box-shadow:0 10px 20px rgba(4,7,25,.38),0 0 14px rgba(var(--supply-accent),.18)} }
 
 /* ---------- action bar ---------- */
 #action-bar{min-height:84px}
@@ -263,14 +288,6 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .pl-free{margin-top:7px;color:var(--good);font-weight:800;font-size:12.5px}
 .pl-short{margin-top:7px;color:var(--bad);font-weight:800;font-size:12.5px}
 
-/* ---------- "your resources" strip (active player's tokens + bonus discounts) ---------- */
-#my-resources{display:flex;flex-direction:column;gap:7px}
-.mc-label{font-size:11px;color:var(--muted);font-weight:800;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mychips{display:flex;flex-wrap:wrap;gap:6px}
-.mychip{display:flex;align-items:center;gap:3px;background:#11163a;border:1px solid var(--line);border-radius:16px;padding:3px 9px 3px 4px;font-size:13px;min-height:30px}
-.mychip .mc-tok{font-weight:800;min-width:10px;text-align:center}
-.mychip .mc-bon{color:var(--good);font-weight:800;font-size:12px}
-
 /* ---------- guided tutorial (新手教程) ---------- */
 .setup-tutorials{margin-top:10px}
 .setup-tutorials button{flex:1 1 auto}
@@ -300,21 +317,35 @@ button:disabled{opacity:.45;cursor:not-allowed}
 #rotate-hint button{background:transparent;border:none;color:var(--muted);font-size:16px;line-height:1;padding:4px 8px;min-height:auto}
 
 /* ---------- log ---------- */
-#log{max-height:230px;display:flex;flex-direction:column}
-#log-lines{overflow:auto;font-size:12.5px;line-height:1.55;color:var(--muted)}
-#log-lines .ln{padding:2px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+#log{position:fixed;top:calc(56px + var(--sa-t));right:max(12px,var(--sa-r));z-index:55;width:min(390px,calc(100vw - 24px));height:min(620px,calc(100svh - 72px - var(--sa-t)));display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateY(-8px) scale(.98);transform-origin:top right;transition:.16s opacity,.16s transform;box-shadow:0 22px 70px rgba(1,3,18,.68);background:rgba(23,28,68,.97);backdrop-filter:blur(16px)}
+#log.open{opacity:1;pointer-events:auto;transform:none}
+#log .panel-title{flex:none;padding-bottom:9px;border-bottom:1px solid rgba(255,255,255,.08);color:var(--ink)}
+#log .panel-title span{display:flex;align-items:center;gap:6px}
+#log-close{width:34px;padding:0;display:grid;place-items:center}
+#log-lines{overflow:auto;flex:1;min-height:80px;font-size:12.5px;line-height:1.55;color:var(--muted)}
+#log-lines .ln{display:flex;align-items:center;gap:7px;min-height:34px;padding:5px 2px;border-bottom:1px dashed rgba(255,255,255,.08)}
 #log-lines .ln b{color:var(--ink)}
-#log.collapsed #log-lines{display:none}
-#log-toggle{font-weight:600}
+.log-empty{padding:24px 4px;color:var(--muted);text-align:center}
+.log-tools{flex:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1)}
+.log-tools-title{font-size:10px;color:var(--muted);font-weight:900;letter-spacing:1.4px;margin-bottom:7px}
+#undo-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;border-color:rgba(255,213,74,.5);color:var(--gold);font-weight:800}
+.undo-vote{margin-top:8px;padding:9px;border-radius:10px;background:#11163a;border:1px solid var(--line);font-size:12px;line-height:1.5;color:var(--ink)}
+.undo-vote .vote-progress{margin-top:3px;color:var(--muted)}
+.undo-vote .vote-waiting{margin-top:7px;color:var(--good);font-weight:800}
+.undo-vote .vote-actions{display:flex;gap:7px;margin-top:8px}
+.undo-vote .vote-actions button{flex:1;min-height:36px;padding:7px 9px}
+.log-thumbs{display:inline-flex;align-items:center;gap:3px;flex:none}
+.log-thumb{width:28px;height:28px;border-radius:7px;object-fit:cover;background:#0c1030;border:1px solid rgba(255,255,255,.18);box-shadow:0 2px 5px rgba(0,0,0,.35)}
+.log-thumb.ball-thumb{background-position:center;background-size:contain;background-repeat:no-repeat;border-radius:50%;border:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
 
 /* ---------- players ---------- */
 #players{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:12px;padding:0 14px 16px}
-.player{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;position:relative;transition:.15s}
+.player{background:linear-gradient(145deg,rgba(37,44,99,.96),rgba(25,31,76,.96));border:1px solid var(--line);border-radius:18px;padding:14px 16px;position:relative;transition:.15s;min-height:190px}
 .player.active{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,213,74,.45),var(--shadow)}
 .player.ai .pname::after{content:" 🤖"}
-.player-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.pavatar{width:30px;height:30px;border-radius:50%;flex:none;background-size:cover;background-position:center}
-.pname{font-weight:800;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-head{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.pavatar{width:38px;height:38px;border-radius:50%;flex:none;background-size:cover;background-position:center}
+.pname{font-weight:900;font-size:16px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pscore{font-size:24px;font-weight:900;color:var(--gold);line-height:1}
 .pscore small{font-size:11px;color:var(--muted);font-weight:600}
 /* running total of held Poké Balls, next to the score (10 = end-of-turn cap) */
@@ -325,16 +356,17 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .ptokens.full small{color:var(--gold)}
 .ptokens.over{border-color:var(--bad);color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
 .ptokens.over small{color:var(--bad)}
-.pstats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-.chip{display:flex;align-items:center;gap:4px;background:#11163a;border:1px solid var(--line);border-radius:20px;padding:3px 9px 3px 4px;font-size:13px}
-.chip .num{font-weight:800;min-width:12px;text-align:center}
-.chip .bonus-n{color:var(--good);font-weight:800}
+.pstats{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.chip{width:58px;min-height:52px;display:grid;grid-template-columns:27px 1fr;grid-template-rows:1fr 1fr;align-items:center;gap:0 3px;background:linear-gradient(145deg,#151b48,#0f1438);border:1px solid var(--line);border-radius:11px;padding:5px 6px;font-size:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.chip .ball{grid-row:1/3;width:27px;height:27px}
+.chip .num{font-weight:900;min-width:12px;text-align:center;align-self:end;line-height:1}
+.chip .bonus-n{color:var(--good);font-weight:900;text-align:center;align-self:start;line-height:1;margin-top:3px}
 .pcards{display:flex;gap:6px;flex-wrap:wrap}
 .color-stack{position:relative}
 .color-stack .ministack{display:flex;flex-direction:column}
-.mini-card{width:42px;height:56px;border-radius:5px;overflow:hidden;border:1px solid #000;box-shadow:0 1px 3px rgba(0,0,0,.5);cursor:pointer}
+.mini-card{width:60px;height:80px;border-radius:7px;overflow:hidden;border:1px solid #000;box-shadow:0 3px 8px rgba(0,0,0,.5);cursor:pointer}
 .mini-card img{width:100%;height:100%;object-fit:cover}
-.mini-card.stacked{margin-top:-44px}
+.mini-card.stacked{margin-top:-62px}
 /* face-down reserve backs: real tier art (base) / green CSS back (Pokémart) */
 .mini-card.card-back{background:linear-gradient(135deg,#3a2a6e,#221a4a) center/cover no-repeat}
 .mini-card.card-back[data-tier="stage1"]{background-image:linear-gradient(rgba(8,10,30,.5),rgba(8,10,30,.65)),url(../assets/backs/stage1.webp)}
@@ -387,10 +419,17 @@ button:disabled{opacity:.45;cursor:not-allowed}
    ============================================================ */
 @media (max-width:860px){
   #game{display:flex;flex-direction:column;min-height:var(--app-h);padding-bottom:calc(var(--dock-h) + var(--sa-b) + 6px)}
+  #game-head{order:0}
+  #topbar{padding-top:calc(6px + var(--sa-t));padding-bottom:6px}
+  .turn-banner{min-height:64px;padding-top:8px;padding-bottom:8px;gap:10px}
+  .turn-beacon{width:38px;height:38px;font-size:20px;box-shadow:0 0 0 4px rgba(255,255,255,.1),0 6px 14px rgba(5,9,32,.3)}
+  .turn-copy strong{font-size:16px}
+  .turn-copy small{font-size:10px;margin-top:3px}
+  .turn-kicker{font-size:9px}
   #board{order:1;padding:8px max(6px,var(--sa-r)) 0 max(6px,var(--sa-l))}
   #players{order:2;padding:10px max(8px,var(--sa-r)) 12px max(8px,var(--sa-l));grid-auto-flow:row;grid-auto-columns:auto;
     grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
-  #log{order:3;margin:0 max(8px,var(--sa-l)) 8px max(8px,var(--sa-r));max-height:170px}
+  #log{top:calc(50px + var(--sa-t));left:max(8px,var(--sa-l));right:max(8px,var(--sa-r));width:auto;height:min(620px,calc(100svh - 62px - var(--sa-t)));max-height:none;margin:0}
 
   /* the dock: supply + contextual actions, pinned in the thumb zone */
   #controls{position:fixed;left:0;right:0;bottom:0;z-index:46;order:99;gap:6px;
@@ -399,24 +438,19 @@ button:disabled{opacity:.45;cursor:not-allowed}
     box-shadow:0 -8px 24px rgba(0,0,0,.4);max-height:54svh;overflow:auto}
   #controls .panel{padding:8px;border-radius:12px}
 
-  /* supply as a compact horizontal strip of tappable ball-chips */
+  /* same square supply cards, horizontal only where thumb reach matters */
   #supply{flex-direction:row;flex-wrap:nowrap;gap:6px;overflow-x:auto;overflow-y:hidden;padding:6px;
     scroll-snap-type:x proximity;overscroll-behavior-x:contain}
   #supply::-webkit-scrollbar{height:0}
   #supply .panel-title{display:none}
-  .supply-row{flex:0 0 auto;flex-direction:column;gap:1px;padding:5px 8px;min-width:50px;min-height:58px;justify-content:center;text-align:center;scroll-snap-align:start}
+  .supply-row{flex:0 0 66px;width:66px;height:66px;gap:1px;padding:5px;justify-content:center;text-align:center;scroll-snap-align:start;border-radius:13px}
   .supply-row .name{display:none}
-  .supply-row .cnt{font-size:14px;min-width:0}
+  .supply-row .ball{width:34px;height:34px}
+  .supply-row .cnt{top:4px;right:4px;font-size:12px;min-width:21px;height:21px;border-radius:7px}
+  .supply-row .picked-n{bottom:3px;font-size:8px;padding:1px 5px}
   .supply-row.mega-row{margin:0;border-top:none;border-left:1px dashed var(--line);padding-left:10px}
   #action-bar{min-height:0}
   .act-hint{margin-bottom:6px}
-
-  /* your-resources: single compact horizontal scroll row in the dock */
-  #my-resources{flex-direction:row;align-items:center;gap:8px;overflow-x:auto;overflow-y:hidden;padding:6px 8px}
-  #my-resources::-webkit-scrollbar{height:0}
-  .mc-label{flex:0 0 auto;font-size:10px}
-  .mychips{flex-wrap:nowrap}
-  .mychip{flex:0 0 auto}
 
   /* board rows scroll horizontally instead of wrapping */
   .tier-row{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:8px;padding:6px;
@@ -428,6 +462,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   .card,.deck-pile{scroll-snap-align:start}
 
   .sel-preview{width:calc(var(--card-w) * 1.7)}
+  #rotate-hint{top:auto;bottom:calc(var(--dock-h) + var(--sa-b) + 10px)}
 }
 
 /* very small phones: shrink cards a touch more, 1 player per row */
@@ -463,13 +498,6 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .fly-card[data-tier="pmL1"],.fly-card[data-tier="pmL2"],.fly-card[data-tier="pmL3"]{background-image:linear-gradient(135deg,rgba(46,209,122,.28),rgba(76,175,80,.18) 50%,rgba(46,209,122,.23)),linear-gradient(160deg,#0d3a1a,#1a5c2a 40%,#0f4620)}
 @keyframes recv{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
 .player.receiving{animation:recv .5s ease}
-
-/* ---------- undo (悔棋) button ---------- */
-#undo-btn{position:fixed;bottom:calc(14px + var(--sa-b));left:calc(14px + var(--sa-l));z-index:40;background:linear-gradient(180deg,#3a4290,#2a3170);color:#fff;border:1px solid var(--line);box-shadow:var(--shadow);font-weight:700;padding:11px 16px;border-radius:12px;min-height:46px}
-#undo-btn .ti,#undo-btn i{margin-right:4px}
-@media (hover:hover) and (pointer:fine){ #undo-btn:hover{filter:brightness(1.1)} }
-/* mobile: lift the undo button above the fixed bottom dock (placed after the base rule so it wins source-order) */
-@media (max-width:860px){ #undo-btn{bottom:calc(var(--dock-h) + var(--sa-b) + 10px)} }
 
 /* ===== Pokémart expansion ===== */
 .tier-pokemart{background:linear-gradient(90deg,rgba(46,209,122,.16),rgba(47,111,214,.10))}
