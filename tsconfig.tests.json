@@ -19,5 +19,10 @@
       "path": "./packages/protocol"
     }
   ],
-  "include": ["apps/**/*.test.ts", "apps/web/src/net.ts", "packages/**/*.test.ts"]
+  "include": [
+    "apps/**/*.test.ts",
+    "apps/server/src/**/*.ts",
+    "apps/web/src/net.ts",
+    "packages/**/*.test.ts"
+  ]
 }

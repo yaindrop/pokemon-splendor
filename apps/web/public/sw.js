@@ -9,9 +9,7 @@ const BACKS = ['stage1', 'stage2', 'stage3', 'rare', 'legend'].map(
 const AVATARS = ['ash', 'misty', 'brock', 'rocket'].map(
   (avatar) => `/assets/avatars/${avatar}.png`,
 );
-const SHELL = [
-  '/',
-  '/index.html',
+const STATIC_SHELL = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
@@ -21,13 +19,24 @@ const SHELL = [
   ...AVATARS,
 ];
 
+async function cacheShell() {
+  const cache = await caches.open(CACHE);
+  const entry = await fetch('/index.html', { cache: 'no-store' });
+  if (!entry.ok) throw new Error(`无法缓存应用入口：${entry.status}`);
+  const html = await entry.clone().text();
+  const entryAssets = [...html.matchAll(/\b(?:src|href)="([^"]+)"/g)]
+    .map((match) => new URL(match[1], self.location.origin))
+    .filter((url) => url.origin === self.location.origin)
+    .map((url) => url.pathname + url.search);
+  await Promise.all([
+    cache.put('/', entry.clone()),
+    cache.put('/index.html', entry),
+    cache.addAll([...new Set([...STATIC_SHELL, ...entryAssets])]),
+  ]);
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(SHELL))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil(cacheShell().then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {

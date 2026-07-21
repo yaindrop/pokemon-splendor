@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { RoomSnapshot } from '@pokemon-splendor/game-core';
+import { isRoomSnapshot } from '@pokemon-splendor/protocol';
 import { isRoomCode } from './room-code.js';
 
 export interface RoomEnvelope {
@@ -28,18 +29,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isRoomEnvelope(value: unknown): value is RoomEnvelope {
   if (!isRecord(value) || value['version'] !== 1) return false;
-  if (!Number.isSafeInteger(value['createdAt']) || !Number.isSafeInteger(value['updatedAt'])) {
+  if (
+    !Number.isSafeInteger(value['createdAt']) ||
+    Number(value['createdAt']) < 0 ||
+    !Number.isSafeInteger(value['updatedAt']) ||
+    Number(value['updatedAt']) < 0
+  ) {
     return false;
   }
-  const room = value['room'];
-  if (!isRecord(room)) return false;
-  return (
-    Number.isSafeInteger(room['seq']) &&
-    typeof room['started'] === 'boolean' &&
-    Array.isArray(room['seats']) &&
-    Number.isFinite(room['turnStartedAt']) &&
-    Array.isArray(room['undoHistory'])
-  );
+  return isRoomSnapshot(value['room']);
 }
 
 export class FileRoomStore implements RoomStore {
@@ -102,7 +100,7 @@ export class FileRoomStore implements RoomStore {
         const snapshot: unknown = JSON.parse(
           await readFile(path.join(this.#directory, file), 'utf8'),
         );
-        if (isRecord(snapshot) && Number(snapshot['updatedAt'] ?? 0) < cutoff) expired.push(code);
+        if (isRoomEnvelope(snapshot) && snapshot.updatedAt < cutoff) expired.push(code);
       } catch {
         // Leave corrupt files in place for operator recovery.
       }

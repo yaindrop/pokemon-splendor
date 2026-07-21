@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import type { RoomServerMessage } from '@pokemon-splendor/game-core';
+import { isServerMessage } from '@pokemon-splendor/protocol';
 import { test } from 'vitest';
-import WebSocket from 'ws';
-import { FileRoomStore } from '../src/file-room-store.ts';
-import { createRoomServer, normalizeName, validMessage } from '../src/room-server.ts';
+import WebSocket, { type RawData } from 'ws';
+import { FileRoomStore, type RoomEnvelope } from '../src/file-room-store.js';
+import { createRoomServer, normalizeName, validMessage } from '../src/room-server.js';
 
-async function withTempDir(fn) {
+async function withTempDir<T>(fn: (directory: string) => Promise<T>): Promise<T> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pokemon-splendor-'));
   try {
     return await fn(dir);
@@ -17,18 +19,48 @@ async function withTempDir(fn) {
   }
 }
 
-function messageOfType(ws, type) {
+function messageOfType<T extends RoomServerMessage['t']>(
+  ws: WebSocket,
+  type: T,
+): Promise<Extract<RoomServerMessage, { readonly t: T }>> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('timed out waiting for ' + type)), 2000);
-    function onMessage(data) {
-      const message = JSON.parse(data.toString());
-      if (message.t !== type) return;
+    const timeout = setTimeout(() => {
+      reject(new Error('timed out waiting for ' + type));
+    }, 2000);
+    function onMessage(data: RawData): void {
+      const bytes = Array.isArray(data)
+        ? Buffer.concat(data)
+        : data instanceof ArrayBuffer
+          ? Buffer.from(new Uint8Array(data))
+          : Buffer.from(data);
+      const message: unknown = JSON.parse(bytes.toString('utf8'));
+      if (!isServerMessage(message)) return;
+      if (!hasMessageType(message, type)) return;
       clearTimeout(timeout);
       ws.off('message', onMessage);
       resolve(message);
     }
     ws.on('message', onMessage);
   });
+}
+
+function hasMessageType<T extends RoomServerMessage['t']>(
+  message: RoomServerMessage,
+  type: T,
+): message is Extract<RoomServerMessage, { readonly t: T }> {
+  return message.t === type;
+}
+
+function roomCode(value: unknown): string {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('code' in value) ||
+    typeof value.code !== 'string'
+  ) {
+    throw new Error('建房响应无效');
+  }
+  return value.code;
 }
 
 test('player names are bounded and cannot carry HTML markup', () => {
@@ -71,7 +103,7 @@ test('player names are bounded and cannot carry HTML markup', () => {
 test('FileRoomStore persists, reloads, and deletes a room snapshot', async () => {
   await withTempDir(async (dir) => {
     const store = new FileRoomStore(dir);
-    const snapshot = {
+    const snapshot: RoomEnvelope = {
       version: 1,
       createdAt: 1000,
       updatedAt: 1234,
@@ -90,6 +122,11 @@ test('FileRoomStore persists, reloads, and deletes a room snapshot', async () =>
 
     const restartedStore = new FileRoomStore(dir);
     assert.deepStrictEqual(await restartedStore.load('ABCD2345'), snapshot);
+    await fs.writeFile(
+      path.join(dir, 'WXYZ2345.json'),
+      JSON.stringify({ ...snapshot, room: { ...snapshot.room, seats: [{}] } }),
+    );
+    await assert.rejects(restartedStore.load('WXYZ2345'), /invalid room snapshot/);
     await restartedStore.save('EFGH6789', { ...snapshot, createdAt: 9999, updatedAt: 9999 });
     assert.deepStrictEqual(await restartedStore.listExpired(5000), ['ABCD2345']);
     await restartedStore.delete('ABCD2345');
@@ -114,7 +151,7 @@ test('RoomServer creates rooms and hosts an authoritative WebSocket game', async
 
       const created = await fetch(base + '/api/rooms', { method: 'POST' });
       assert.strictEqual(created.status, 201);
-      const { code } = await created.json();
+      const code = roomCode(await created.json());
       assert.match(code, /^[A-Z2-9]{8}$/);
 
       const wsUrl = base.replace('http:', 'ws:') + `/room/${code}/ws`;
@@ -133,6 +170,7 @@ test('RoomServer creates rooms and hosts an authoritative WebSocket game', async
       a.send(JSON.stringify({ t: 'join', name: 'Alice' }));
       const wa = await welcomeA;
       assert.strictEqual(wa.seat, 0);
+      if (wa.token === null) throw new Error('服务端未签发重连 token');
       assert.match(wa.token, /^[a-f0-9]{64}$/);
 
       a.terminate();
@@ -146,6 +184,7 @@ test('RoomServer creates rooms and hosts an authoritative WebSocket game', async
       b.send(JSON.stringify({ t: 'join', name: 'Bob' }));
       const wb = await welcomeB;
       assert.strictEqual(wb.seat, 1);
+      if (wb.token === null) throw new Error('服务端未签发重连 token');
       assert.match(wb.token, /^[a-f0-9]{64}$/);
 
       const stateA = messageOfType(a, 'state');
@@ -166,7 +205,7 @@ test('a room survives a server restart and a token reclaims its hidden seat', as
     let app = createRoomServer({ dataDir: dir, host: '127.0.0.1', port: 0 });
     await app.listen();
     const firstBase = `http://127.0.0.1:${app.address().port}`;
-    const { code } = await (await fetch(firstBase + '/api/rooms', { method: 'POST' })).json();
+    const code = roomCode(await (await fetch(firstBase + '/api/rooms', { method: 'POST' })).json());
     const firstWsUrl = firstBase.replace('http:', 'ws:') + `/room/${code}/ws`;
     const a = new WebSocket(firstWsUrl);
     const b = new WebSocket(firstWsUrl);
@@ -191,7 +230,9 @@ test('a room survives a server restart and a token reclaims its hidden seat', as
         action: { type: 'take', colors: ['red', 'blue', 'black'] },
       }),
     );
-    assert.strictEqual((await moved).state.players[0].tokens.red, 1);
+    const movedPlayer = (await moved).state.players[0];
+    assert.ok(movedPlayer);
+    assert.strictEqual(movedPlayer.tokens.red, 1);
     const duplicate = messageOfType(a, 'reject');
     a.send(JSON.stringify({ t: 'action', seq: 1, action: { type: 'endTurn' } }));
     assert.match((await duplicate).reason, /重复|过期/);
@@ -210,7 +251,9 @@ test('a room survives a server restart and a token reclaims its hidden seat', as
       resumed.send(JSON.stringify({ t: 'join', name: 'Alice', token: tokenA }));
       assert.strictEqual((await welcome).seat, 0);
       const restored = await state;
-      assert.strictEqual(restored.state.players[0].tokens.red, 1);
+      const restoredPlayer = restored.state.players[0];
+      assert.ok(restoredPlayer);
+      assert.strictEqual(restoredPlayer.tokens.red, 1);
       resumed.close();
     } finally {
       await app.close();

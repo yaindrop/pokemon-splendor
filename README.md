@@ -18,7 +18,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:5173>。WebSocket 服务默认监听 `http://localhost:3000`，Vite 开发服务器会代理 `/api`、`/room`、`/healthz` 与 `/readyz`。
+打开 <http://localhost:4173>。WebSocket 服务默认监听 `http://localhost:3000`，Vite 开发服务器会代理 `/api`、`/room`、`/healthz` 与 `/readyz`。
 
 常用命令：
 

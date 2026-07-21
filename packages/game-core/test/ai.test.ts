@@ -1,31 +1,49 @@
 /* AI sanity & strength tests — node test/ai.test.js */
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { AI, Engine as E } from '@pokemon-splendor/game-core';
-import { cards as DB } from '../../game-data/src/index.ts';
+import { AI, Engine as E, type GameAction, type GameState } from '@pokemon-splendor/game-core';
+import { cards as DB } from '../../game-data/src/index.js';
 
-function randomTurn(g, rng) {
+type PlayerKind = 'ai' | 'rand';
+
+function requiredAction(action: GameAction | undefined): GameAction {
+  if (!action) throw new Error('AI 测试未生成合法行动');
+  return action;
+}
+
+function captureValue(
+  g: GameState,
+  action: Extract<GameAction, { readonly type: 'capture' }>,
+): number {
+  const card = g.byId[action.cardId];
+  if (!card) throw new Error(`AI 测试引用未知卡牌：${action.cardId}`);
+  return card.vp;
+}
+
+function randomTurn(g: GameState, rng: () => number): void {
   const acts = E.legalActions(g);
   if (!acts.length) g.acted = true;
   else {
     const caps = acts
       .filter((a) => a.type === 'capture')
-      .sort((a, b) => g.byId[b.cardId].vp - g.byId[a.cardId].vp);
+      .sort((a, b) => captureValue(g, b) - captureValue(g, a));
     const pick = caps.length && rng() < 0.85 ? caps[0] : acts[Math.floor(rng() * acts.length)];
-    E.applyAction(g, pick);
+    E.applyAction(g, requiredAction(pick));
   }
   const p = E.activePlayer(g);
   while (E.needsDiscard(g, p)) {
     const c = E.ALL_TOKENS.find((x) => p.tokens[x] > 0);
+    if (!c) throw new Error('需要归还精灵球但训练家没有筹码');
     E.actionDiscard(g, c);
   }
   const evos = E.evolutionOptions(g, p);
-  if (evos.length && rng() < 0.7) E.actionEvolve(g, evos[0].fromId, evos[0].toId);
-  return E.endTurn(g);
+  const evolution = evos[0];
+  if (evolution && rng() < 0.7) E.actionEvolve(g, evolution.fromId, evolution.toId);
+  E.endTurn(g);
 }
 
 let turns = 0;
-function playGame(seed, p0kind, p1kind) {
+function playGame(seed: number, p0kind: PlayerKind, p1kind: PlayerKind): GameState {
   const g = E.createGame(DB, { numPlayers: 2, seed });
   const rng = E.makeRng(seed * 3 + 1);
   let plies = 0;
@@ -69,7 +87,7 @@ test('AI terminates games, beats greedy play, and stays responsive', () => {
   const avgMs = (Date.now() - startedAt) / Math.max(turns, 1);
   assert.ok(avgMs < 250, 'AI turn should be < 250ms (got ' + avgMs.toFixed(0) + ')');
 
-  const lengths = [];
+  const lengths: number[] = [];
   for (let i = 0; i < 10; i++) {
     lengths.push(playGame(900 + i, 'ai', 'ai').round);
   }

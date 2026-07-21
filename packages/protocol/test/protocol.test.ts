@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { Engine, type RoomServerMessage } from '@pokemon-splendor/game-core';
 import { cards } from '../../game-data/src/index.js';
-import { isClientMessage, isGameStateSnapshot, isServerMessage } from '../src/index.js';
+import {
+  isClientMessage,
+  isGameStateSnapshot,
+  isRoomSnapshot,
+  isServerMessage,
+} from '../src/index.js';
 import { test } from 'vitest';
 
 test('client protocol accepts every supported command and rejects malformed input', () => {
@@ -41,6 +46,15 @@ test('client protocol accepts every supported command and rejects malformed inpu
 test('server protocol validates state and control message variants', () => {
   const game = Engine.createGame(cards, { numPlayers: 2, seed: 42 });
   const state = Engine.redactFor(game, 0);
+  const stateMessage: RoomServerMessage = {
+    t: 'state',
+    seq: 1,
+    state,
+    turnStartedAt: 100,
+    serverNow: 110,
+    turnTimeoutMs: null,
+    undoAvailable: false,
+  };
   const validMessages: readonly RoomServerMessage[] = [
     { t: 'pong' },
     { t: 'welcome', connId: 'connection-1', seat: 0, host: true, token: null },
@@ -50,15 +64,7 @@ test('server protocol validates state and control message variants', () => {
       hostSeat: 0,
       started: false,
     },
-    {
-      t: 'state',
-      seq: 1,
-      state,
-      turnStartedAt: 100,
-      serverNow: 110,
-      turnTimeoutMs: null,
-      undoAvailable: false,
-    },
+    stateMessage,
     { t: 'reject', reason: '非法操作', seq: 1 },
     { t: 'over', winner: null },
     { t: 'undo-vote', requesterSeat: 0, approvals: [0], total: 2 },
@@ -72,6 +78,10 @@ test('server protocol validates state and control message variants', () => {
     { t: 'welcome', connId: 1, seat: 0, host: true, token: null },
     { t: 'roster', players: [{ seat: -1, name: 'x', connected: true }], hostSeat: 0 },
     { t: 'state', seq: 1, state: { ...state, phase: 'invalid' } },
+    {
+      ...stateMessage,
+      state: { ...state, decks: { ...state.decks, stage1: ['s1_01'] } },
+    },
     { t: 'reject', reason: 1 },
     { t: 'over', winner: 'zero' },
     { t: 'undo-vote', requesterSeat: 0, approvals: [-1], total: 2 },
@@ -91,8 +101,27 @@ test('persisted game snapshots require visible reserves and complete state field
   } = game;
   assert.equal(isGameStateSnapshot(snapshot), true);
   assert.equal(isGameStateSnapshot({ ...snapshot, players: [] }), false);
+  assert.equal(isGameStateSnapshot({ ...snapshot, decks: {} }), false);
+  assert.equal(isGameStateSnapshot({ ...snapshot, field: {} }), false);
   assert.equal(isGameStateSnapshot({ ...snapshot, supply: { red: -1 } }), false);
   const redacted = Engine.redactFor(game, 1);
   redacted.players[0]?.reserve.push({ hidden: true, tier: 'stage1' });
   assert.equal(isGameStateSnapshot(redacted), false);
+});
+
+test('room snapshots deeply validate seats, games, and undo history', () => {
+  const room = {
+    seq: 0,
+    started: false,
+    seats: [],
+    turnStartedAt: 0,
+    turnTimeoutMs: null,
+    g: null,
+    undoHistory: [],
+  };
+  assert.equal(isRoomSnapshot(room), true);
+  assert.equal(isRoomSnapshot({ ...room, seats: [{ name: '小智' }] }), false);
+  assert.equal(isRoomSnapshot({ ...room, undoHistory: [{}] }), false);
+  assert.equal(isRoomSnapshot({ ...room, turnTimeoutMs: 1 }), false);
+  assert.equal(isRoomSnapshot({ ...room, started: true }), false);
 });

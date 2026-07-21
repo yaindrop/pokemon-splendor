@@ -212,7 +212,7 @@ export interface RoomSnapshot {
     readonly connected: false;
   }[];
   readonly turnStartedAt: number;
-  readonly turnTimeoutMs: number | null;
+  readonly turnTimeoutMs?: number | null;
   readonly g: Omit<GameState, 'cardDB' | 'byId' | 'megaDB' | 'pokemartDB'> | null;
   readonly undoHistory: readonly Omit<GameState, 'cardDB' | 'byId' | 'megaDB' | 'pokemartDB'>[];
 }

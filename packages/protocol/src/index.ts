@@ -9,6 +9,7 @@ import {
   type RedactedGameState,
   type RoomClientMessage,
   type RoomServerMessage,
+  type RoomSnapshot,
   type Tier,
 } from '@pokemon-splendor/game-core';
 
@@ -98,51 +99,35 @@ function isPlayer(value: unknown): boolean {
   );
 }
 
-function isDecks(value: unknown): boolean {
+function isCardIdOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isDecks(value: unknown, redacted: boolean): boolean {
   if (!isRecord(value)) return false;
-  return [...FIELD_TIERS, ...POKEMART_TIERS].every((tier) => {
-    const deck = value[tier];
-    return (
-      deck == null ||
-      (Array.isArray(deck) && deck.every((item) => item === null || typeof item === 'string'))
-    );
-  });
+  const validDeck = (deck: unknown): boolean =>
+    Array.isArray(deck) && deck.every((item) => (redacted ? item === null : isCardIdOrNull(item)));
+  return (
+    FIELD_TIERS.every((tier) => validDeck(value[tier])) &&
+    POKEMART_TIERS.every((tier) => value[tier] == null || validDeck(value[tier]))
+  );
 }
 
 function isField(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  return [...FIELD_TIERS, ...POKEMART_TIERS].every((tier) => {
-    const cards = value[tier];
-    return (
-      cards == null ||
-      (Array.isArray(cards) && cards.every((item) => item === null || typeof item === 'string'))
-    );
-  });
-}
-
-function isLog(value: unknown): boolean {
+  const validCards = (cards: unknown): boolean =>
+    Array.isArray(cards) && cards.every(isCardIdOrNull);
   return (
-    Array.isArray(value) &&
-    value.every((entry) => {
-      if (!isRecord(entry)) return false;
-      return (
-        isNonNegativeInteger(entry['turn']) &&
-        isNonNegativeInteger(entry['round']) &&
-        typeof entry['msg'] === 'string' &&
-        (entry['kind'] == null || typeof entry['kind'] === 'string') &&
-        (entry['cardId'] == null || typeof entry['cardId'] === 'string') &&
-        (entry['colors'] == null ||
-          (Array.isArray(entry['colors']) &&
-            entry['colors'].every((color) =>
-              TOKEN_COLORS.some((candidate) => candidate === color),
-            ))) &&
-        (entry['pay'] == null || isTokenCounts(entry['pay']))
-      );
-    })
+    FIELD_TIERS.every((tier) => validCards(value[tier])) &&
+    POKEMART_TIERS.every((tier) => value[tier] == null || validCards(value[tier]))
   );
 }
 
-function isGameStateShape(value: unknown, playerGuard: (player: unknown) => boolean): boolean {
+function isGameStateShape(
+  value: unknown,
+  playerGuard: (player: unknown) => boolean,
+  redacted: boolean,
+): boolean {
   if (!isRecord(value)) return false;
   const playerCount = value['numPlayers'];
   const players = value['players'];
@@ -153,7 +138,7 @@ function isGameStateShape(value: unknown, playerGuard: (player: unknown) => bool
     playerCount >= 2 &&
     playerCount <= 4 &&
     isSupply(value['supply']) &&
-    isDecks(value['decks']) &&
+    isDecks(value['decks'], redacted) &&
     isField(value['field']) &&
     Array.isArray(players) &&
     players.length === playerCount &&
@@ -180,7 +165,7 @@ function isGameStateShape(value: unknown, playerGuard: (player: unknown) => bool
 }
 
 function isRedactedGameState(value: unknown): value is RedactedGameState {
-  return isGameStateShape(value, isPlayer) && isRecord(value) && isInteger(value['viewerId']);
+  return isGameStateShape(value, isPlayer, true) && isRecord(value) && isInteger(value['viewerId']);
 }
 
 function isSnapshotPlayer(value: unknown): boolean {
@@ -188,7 +173,40 @@ function isSnapshotPlayer(value: unknown): boolean {
 }
 
 export function isGameStateSnapshot(value: unknown): value is GameStateSnapshot {
-  return isGameStateShape(value, isSnapshotPlayer);
+  return isGameStateShape(value, isSnapshotPlayer, false);
+}
+
+function isSnapshotSeat(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const token = value['token'];
+  return (
+    (token === null || (typeof token === 'string' && /^[a-f0-9]{64}$/.test(token))) &&
+    typeof value['name'] === 'string' &&
+    value['connId'] === null &&
+    value['connected'] === false
+  );
+}
+
+export function isRoomSnapshot(value: unknown): value is RoomSnapshot {
+  if (!isRecord(value)) return false;
+  const game = value['g'];
+  const history = value['undoHistory'];
+  const seats = value['seats'];
+  return (
+    isNonNegativeInteger(value['seq']) &&
+    typeof value['started'] === 'boolean' &&
+    Array.isArray(seats) &&
+    seats.length <= 4 &&
+    seats.every(isSnapshotSeat) &&
+    isNonNegativeInteger(value['turnStartedAt']) &&
+    (value['turnTimeoutMs'] == null || Room.isTurnTimeoutMs(value['turnTimeoutMs'])) &&
+    (game === null || isGameStateSnapshot(game)) &&
+    Array.isArray(history) &&
+    history.length <= 20 &&
+    history.every(isGameStateSnapshot) &&
+    (!value['started'] ||
+      (isGameStateSnapshot(game) && game.numPlayers === seats.length && seats.length >= 2))
+  );
 }
 
 function isRosterPlayers(value: unknown): boolean {
@@ -295,4 +313,26 @@ export function isClientMessage(message: unknown): message is RoomClientMessage 
     default:
       return false;
   }
+}
+
+function isLog(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every((entry) => {
+      if (!isRecord(entry)) return false;
+      return (
+        isNonNegativeInteger(entry['turn']) &&
+        isNonNegativeInteger(entry['round']) &&
+        typeof entry['msg'] === 'string' &&
+        (entry['kind'] == null || typeof entry['kind'] === 'string') &&
+        (entry['cardId'] == null || typeof entry['cardId'] === 'string') &&
+        (entry['colors'] == null ||
+          (Array.isArray(entry['colors']) &&
+            entry['colors'].every((color) =>
+              TOKEN_COLORS.some((candidate) => candidate === color),
+            ))) &&
+        (entry['pay'] == null || isTokenCounts(entry['pay']))
+      );
+    })
+  );
 }
