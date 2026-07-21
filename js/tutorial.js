@@ -58,15 +58,15 @@
       next: true,
     },
     {
-      title: '① 拿精灵球（3 个不同色）',
-      html: '每个回合只能做 <b>一个</b>主要行动，最常用的就是拿球。<br>规则：一次拿 <b>3 个不同颜色</b>的精灵球。<br>👇 在高亮的精灵球区，点 <b>3 个不同颜色</b>，再点「确定拿取」。',
+      title: '① 领取精灵球（3 个不同色）',
+      html: '每个回合只能做 <b>一个</b>主要行动，最常用的就是领取精灵球。<br>规则：一次领取 <b>3 个不同颜色</b>的精灵球。<br>👇 在高亮的精灵球区，点 <b>3 个不同颜色</b>，再点「确认领取」。',
       arrange: (g) => { for (const c of COLORS) g.supply[c] = 4; setTokens(g, {}); },
       target: '#supply',
       detect: (g, c) => tokenTotal(g) >= c.tok + 3,
     },
     {
-      title: '② 拿精灵球（2 个同色）',
-      html: '另一种拿法：拿 <b>2 个相同</b>颜色（仅当该颜色还剩 ≥4 个时才可以）。<br>👇 连点同一种颜色 <b>2 次</b>（例如黑色），再点「确定拿取」。',
+      title: '② 领取精灵球（2 个同色）',
+      html: '另一种领法：领取 <b>2 个相同</b>颜色（仅当该颜色还剩 ≥4 个时才可以）。<br>👇 连点同一种颜色 <b>2 次</b>（例如黑色），再点「确认领取」。',
       arrange: (g) => { for (const c of COLORS) g.supply[c] = 4; },
       target: '#supply',
       detect: (g, c) => tokenTotal(g) >= c.tok + 2,
@@ -86,8 +86,8 @@
       detect: (g, c) => P(g).buried.length > c.buried,
     },
     {
-      title: '⑤ 保留（预订一张卡）',
-      html: '想要的卡现在买不起？用 <b>保留</b> 把它收进手牌（最多 3 张，别人抢不走），还会 <b>白送 1 个大师球</b>（紫色万能球，能当任意颜色用，非常珍贵）。<br>👇 点一个高亮的 <b>牌堆</b>（虚线方块）来保留它顶上的牌。',
+      title: '⑤ 预留宝可梦',
+      html: '想要的宝可梦现在还无法捕捉？用 <b>预留</b> 把它加入预留区（最多 3 张，别人抢不走），还会 <b>获得 1 个大师球</b>（紫色万能球，能当任意颜色用，非常珍贵）。<br>👇 点一个高亮的 <b>牌堆</b>来预留它顶上的宝可梦。',
       target: () => document.querySelector('.deck-pile.reservable'),
       detect: (g, c) => P(g).reserve.length > c.reserve,
     },
@@ -195,7 +195,7 @@
     document.getElementById('tut-title').innerHTML = curMode === 'megas' ? '⚡ 学会超级进化！' : '🏆 恭喜通关！';
     document.getElementById('tut-text').innerHTML = curMode === 'megas'
       ? '耿鬼超级进化成了 <b>超级耿鬼</b>！<br>正式的超级进化对局：达到 <b>20 分 + 集齐 5 种颜色折扣 + 至少 1 只 Mega</b> 即获胜。去挑战吧！'
-      : '你已经体验了 <b>拿球、捕捉、保留、进化</b>，并赢得了比赛！这就是游戏的核心循环。<br>现在去开始一局真正的对局，挑战电脑或朋友吧（正式对局先到 <b>18 分</b> 者胜）。';
+      : '你已经体验了 <b>领取精灵球、捕捉、预留、进化</b>，并赢得了比赛！这就是游戏的核心循环。<br>现在去开始一局真正的对局，挑战电脑或朋友吧（正式对局先到 <b>18 分</b> 者胜）。';
     const acts = document.getElementById('tut-actions'); acts.innerHTML = '';
     const go = document.createElement('button'); go.className = 'primary'; go.textContent = '开始一局对局'; go.onclick = exit; acts.appendChild(go);
     if (curMode !== 'megas') { const ag = document.createElement('button'); ag.className = 'ghost small'; ag.textContent = '再练一次'; ag.onclick = () => start('base'); acts.appendChild(ag); }

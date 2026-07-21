@@ -324,33 +324,33 @@
     const p = activePlayer(s);
     if (s.acted) return { ok: false, error: '本回合已行动' };
     if (!Array.isArray(colors) || colors.length === 0) return { ok: false, error: '未选择精灵球' };
-    if (colors.length > 6) return { ok: false, error: '非法的拿取' }; // bound input before allocating a Set
+    if (colors.length > 6) return { ok: false, error: '非法的领取' }; // bound input before allocating a Set
     for (const c of colors) {
-      if (!COLORS.includes(c)) return { ok: false, error: '不能拿取大师球' };
+      if (!COLORS.includes(c)) return { ok: false, error: '不能领取大师球' };
     }
     const uniq = new Set(colors);
     let mode;
     if (colors.length === 2 && uniq.size === 1) {
       mode = 'double';
       const c = colors[0];
-      if (s.supply[c] < 4) return { ok: false, error: '该颜色少于4个，不能拿两个' };
+      if (s.supply[c] < 4) return { ok: false, error: '该颜色少于4个，不能领取两个' };
     } else if (uniq.size === colors.length && colors.length <= 3) {
       mode = 'distinct';
       // Official rule: take 3 tokens of different types. Only when fewer than 3
       // colors remain available in the supply may you take fewer (2, or even 1).
       const availDistinct = COLORS.filter(col => s.supply[col] > 0).length;
       if (availDistinct >= 3 && colors.length !== 3) {
-        return { ok: false, error: '必须拿取3种不同颜色的精灵球' };
+        return { ok: false, error: '必须领取3种不同颜色的精灵球' };
       }
     } else {
-      return { ok: false, error: '只能拿3种不同 或 2个同色' };
+      return { ok: false, error: '只能领取3种不同颜色，或领取2个同色' };
     }
     for (const c of uniq) if (s.supply[c] < (mode === 'double' ? 2 : 1)) return { ok: false, error: '供应不足' };
     // apply
     for (const c of colors) { s.supply[c]--; p.tokens[c]++; }
     s.acted = true;
     s.taken = colors.slice();
-    log(s, `${p.name} 拿取 ${colors.map(zhBall).join('、')}`, { kind: 'take', colors: colors.slice() });
+    log(s, `${p.name} 领取 ${colors.map(zhBall).join('、')}`, { kind: 'take', colors: colors.slice() });
     return { ok: true };
   }
 
@@ -358,19 +358,19 @@
     // target: {fromField:id} or {fromDeck:tier}
     const p = activePlayer(s);
     if (s.acted) return { ok: false, error: '本回合已行动' };
-    if (p.reserve.length >= HAND_MAX) return { ok: false, error: '保留区已满（最多3张）' };
+    if (p.reserve.length >= HAND_MAX) return { ok: false, error: '预留区已满（最多3张）' };
     let cardId = null, tier = null, slot = -1, fromDeck = false;
     const reservable = (t) => NORMAL_TIERS.includes(t) || (s.pokemartEnabled && PM_TIERS.includes(t));
     if (target.fromDeck) {
       tier = target.fromDeck;
-      if (!reservable(tier)) return { ok: false, error: '稀有/传说不可保留' };
+      if (!reservable(tier)) return { ok: false, error: '稀有/传说不可预留' };
       if (!s.decks[tier].length) return { ok: false, error: '牌堆已空' };
       cardId = s.decks[tier].pop(); fromDeck = true;
     } else {
       cardId = target.fromField;
       const loc = locateCard(s, cardId);
       if (loc.where !== 'field') return { ok: false, error: '该卡不在场上' };
-      if (!reservable(loc.tier)) return { ok: false, error: '稀有/传说不可保留' };
+      if (!reservable(loc.tier)) return { ok: false, error: '稀有/传说不可预留' };
       tier = loc.tier; slot = loc.slot;
     }
     p.reserve.push(cardId);
@@ -379,7 +379,7 @@
     let got = '';
     if (s.supply.purple > 0) { s.supply.purple--; p.tokens.purple++; got = ' 并获得1个大师球'; }
     s.acted = true;
-    log(s, `${p.name} 保留了一张${zhTier(tier)}宝可梦${fromDeck ? '（牌堆顶）' : ''}${got}`);
+    log(s, `${p.name} 预留了一张${zhTier(tier)}宝可梦${fromDeck ? '（牌堆顶）' : ''}${got}`);
     return { ok: true, cardId };
   }
 
@@ -489,7 +489,7 @@
     }
     const loc = locateCard(s, cardId);
     const fromReserve = loc.where === 'reserve' && loc.owner === p.id;
-    if (loc.where !== 'field' && !fromReserve) return { ok: false, error: '只能捕捉场上或自己保留区的宝可梦' };
+    if (loc.where !== 'field' && !fromReserve) return { ok: false, error: '只能捕捉场上或自己预留区的宝可梦' };
 
     // --- REPEL (discard_buy): no token cost; discard owned cards of a colour ---
     if (isPokemart(card) && card.effect === 'discard_buy') {
