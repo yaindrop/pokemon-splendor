@@ -17,38 +17,88 @@
 <body>
   <!-- ===== Setup / menu screen ===== -->
   <div id="setup" class="screen">
-    <div class="setup-card">
+    <div class="setup-card setup-hub">
       <h1 class="brand"><span class="brand-splendor">璀璨宝石</span><span class="brand-dot">·</span><span class="brand-pkmn">宝可梦</span></h1>
       <p class="tagline">收集精灵球，捕捉并进化宝可梦，率先达到 18 分成为冠军训练家！</p>
 
-      <div class="setup-row">
-        <label>玩家人数</label>
-        <div id="player-count" class="seg">
-          <button data-n="2" class="active">2</button>
-          <button data-n="3">3</button>
-          <button data-n="4">4</button>
+      <div id="mode-home" class="mode-home">
+        <div class="mode-grid" aria-label="选择游戏模式">
+          <button id="choose-online" class="mode-card mode-online">
+            <span class="mode-icon" aria-hidden="true">◎</span>
+            <span class="mode-eyebrow">ONLINE ROOM</span>
+            <strong>和朋友联机</strong>
+            <small>创建房间，分享链接，跨设备一起玩</small>
+            <span class="mode-enter">进入联机大厅 →</span>
+          </button>
+          <button id="choose-local" class="mode-card mode-local">
+            <span class="mode-icon" aria-hidden="true">⌁</span>
+            <span class="mode-eyebrow">SOLO TABLE</span>
+            <strong>单机对战</strong>
+            <small>同屏多人，或与电脑训练家立即开局</small>
+            <span class="mode-enter">设置本地对局 →</span>
+          </button>
+        </div>
+        <div class="setup-actions home-extras">
+          <button id="rules-btn" class="ghost">规则说明</button>
+          <button id="tutorial-btn" class="ghost">🎓 新手教程</button>
+          <button id="tutorial-mega-btn" class="ghost">⚡ 超级进化教程</button>
         </div>
       </div>
 
-      <div id="seats" class="seats"></div>
+      <div id="local-config" class="setup-config hidden">
+        <div class="config-head"><button class="ghost small setup-back" type="button">← 返回</button><strong>单机对战设置</strong></div>
+        <div class="setup-row">
+          <label>玩家人数</label>
+          <div id="player-count" class="seg">
+            <button data-n="2" class="active">2</button>
+            <button data-n="3">3</button>
+            <button data-n="4">4</button>
+          </div>
+        </div>
 
-      <div class="setup-row">
-        <label>扩展</label>
-        <label class="exp-toggle"><input type="checkbox" id="opt-megas"> 超级进化 (Megas)：第4级 Mega 卡 + Mega 代币，胜利需 20分+集齐每色+1只Mega</label>
-        <label class="exp-toggle"><input type="checkbox" id="opt-pokemart"> Pokémart：每级 +2 张商店卡（药水双奖励 / 进化石关联 / 图鉴抵款 / 神奇糖果·技能机免费取卡 / 驱虫弃购）</label>
+        <div id="seats" class="seats"></div>
+
+        <div class="setup-row">
+          <label>扩展</label>
+          <label class="exp-toggle"><input type="checkbox" id="opt-megas"> 超级进化 (Megas)：第4级 Mega 卡 + Mega 代币，胜利需 20分+集齐每色+1只Mega</label>
+          <label class="exp-toggle"><input type="checkbox" id="opt-pokemart"> Pokémart：每级 +2 张商店卡（药水双奖励 / 进化石关联 / 图鉴抵款 / 神奇糖果·技能机免费取卡 / 驱虫弃购）</label>
+        </div>
+
+        <div class="setup-actions">
+          <button id="start-btn" class="primary">开始单机对战</button>
+        </div>
       </div>
 
-      <div class="setup-actions">
-        <button id="start-btn" class="primary">开始游戏</button>
-        <button id="rules-btn" class="ghost">规则说明</button>
-      </div>
-      <div class="setup-actions setup-tutorials">
-        <button id="tutorial-btn" class="ghost">🎓 新手教程（零基础）</button>
-        <button id="tutorial-mega-btn" class="ghost">⚡ 超级进化教程</button>
-      </div>
-      <div class="setup-actions setup-online">
-        <button id="online-create" class="ghost">🌐 创建联机房间</button>
-        <button id="online-join" class="ghost">🔗 加入房间</button>
+      <div id="online-config" class="setup-config hidden">
+        <div class="config-head"><button class="ghost small setup-back" type="button">← 返回</button><strong>联机房间</strong></div>
+        <label class="field-label" for="online-name">训练家名字</label>
+        <input id="online-name" class="setup-input" type="text" maxlength="20" value="训练家 1" autocomplete="nickname">
+
+        <div class="online-create-box">
+          <div class="online-section-title"><span>创建新房间</span><small>房主设置</small></div>
+          <label class="timeout-toggle">
+            <input type="checkbox" id="online-timeout-enabled">
+            <span><strong>启用超时 AI 接管</strong><small>玩家长时间未行动时，服务器自动完成该回合</small></span>
+          </label>
+          <label id="online-timeout-field" class="timeout-duration disabled" for="online-timeout-ms">
+            <span>等待时间</span>
+            <select id="online-timeout-ms" disabled>
+              <option value="60000">1 分钟</option>
+              <option value="180000" selected>3 分钟</option>
+              <option value="300000">5 分钟</option>
+              <option value="600000">10 分钟</option>
+            </select>
+          </label>
+          <button id="online-create" class="primary wide">创建联机房间</button>
+        </div>
+
+        <div class="online-join-box">
+          <div class="online-section-title"><span>加入朋友的房间</span></div>
+          <div class="join-row">
+            <input id="online-room-code" class="setup-input" type="text" maxlength="8" placeholder="输入 8 位房间码" autocomplete="off" autocapitalize="characters">
+            <button id="online-join" class="ghost">加入</button>
+          </div>
+        </div>
       </div>
       <div class="credit">素材源自 TTS 模组「璀璨宝石：宝可梦」 · 卡牌数据由原始卡面提取</div>
     </div>
@@ -65,6 +115,16 @@
         <label>扩展</label>
         <label class="exp-toggle"><input type="checkbox" id="lobby-megas"> 超级进化 (Megas)</label>
         <label class="exp-toggle"><input type="checkbox" id="lobby-pokemart"> Pokémart</label>
+      </div>
+      <div class="setup-row lobby-timeout">
+        <label>超时接管</label>
+        <label class="timeout-toggle compact"><input type="checkbox" id="lobby-timeout-enabled"><span><strong>启用</strong><small>默认关闭</small></span></label>
+        <select id="lobby-timeout-ms" class="setup-select" disabled>
+          <option value="60000">1 分钟</option>
+          <option value="180000" selected>3 分钟</option>
+          <option value="300000">5 分钟</option>
+          <option value="600000">10 分钟</option>
+        </select>
       </div>
       <div class="setup-actions">
         <button id="lobby-start" class="primary">开始游戏</button>
@@ -104,11 +164,11 @@
         </div>
         <div id="turn-banner" class="turn-banner" role="status" aria-live="polite"></div>
         <div class="topbar-right">
+          <div id="idle-bar" class="idle-bar" role="status" aria-live="polite"></div>
           <button id="log-btn" class="ghost small topbar-action" aria-controls="log" aria-expanded="false"><span aria-hidden="true">◷</span><span>记录</span></button>
           <button id="menu-btn" class="ghost small topbar-action"><span aria-hidden="true">☰</span><span>菜单</span></button>
         </div>
       </header>
-      <div id="idle-bar" class="idle-bar"></div>
     </div>
 
     <main id="board">

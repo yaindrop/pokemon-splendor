@@ -74,6 +74,14 @@
   let UI = { pick: [], selCard: null, selDeck: null, phase: 'main', busy: false, humans: 0 };
 
   // ---------------------------------------------------------------- setup
+  function showSetupMode(mode) {
+    const home = $('#mode-home'), local = $('#local-config'), online = $('#online-config');
+    if (home) home.classList.toggle('hidden', mode !== 'home');
+    if (local) local.classList.toggle('hidden', mode !== 'local');
+    if (online) online.classList.toggle('hidden', mode !== 'online');
+    const hub = $('.setup-hub'); if (hub) hub.classList.toggle('config-open', mode !== 'home');
+  }
+
   function buildSeats(n) {
     const seats = $('#seats');
     seats.innerHTML = '';
@@ -132,6 +140,7 @@
     $('#game').classList.add('hidden');
     $('#win-modal').classList.add('hidden');
     $('#setup').classList.remove('hidden');
+    showSetupMode('home');
   }
 
   // ============================ online multiplayer ============================
@@ -139,7 +148,7 @@
     code = (code || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
     if (!code || !window.Net) return;
     if (window.Tutorial && Tutorial.stop) Tutorial.stop();
-    const name = (($('[data-name="0"]') && $('[data-name="0"]').value.trim()) || '训练家');
+    const name = (($('#online-name') && $('#online-name').value.trim()) || ($('[data-name="0"]') && $('[data-name="0"]').value.trim()) || '训练家');
     gameEpoch++;
     UI = { pick: [], selCard: null, selDeck: null, phase: 'main', busy: false, humans: 0, hasAI: false,
            net: { code, name, seat: null, host: !!asHost, status: 'connecting', started: false, roster: [], undoAvailable: false, undoVote: null } };
@@ -186,6 +195,9 @@
     const mb = $('#lobby-megas'), pb = $('#lobby-pokemart');
     if (mb) mb.disabled = !UI.net.host;
     if (pb) pb.disabled = !UI.net.host;
+    const te = $('#lobby-timeout-enabled'), tm = $('#lobby-timeout-ms');
+    if (te) te.disabled = !UI.net.host;
+    if (tm) tm.disabled = !UI.net.host || !te || !te.checked;
   }
   function leaveOnline() {
     stopIdleTimer();
@@ -194,6 +206,7 @@
     try { history.replaceState(null, '', location.pathname); } catch (e) { }
     $('#lobby').classList.add('hidden'); $('#game').classList.add('hidden');
     $('#setup').classList.remove('hidden');
+    showSetupMode('home');
   }
   // Apply an authoritative redacted snapshot from the server (server drives turns).
   function onNetState(m) {
@@ -206,14 +219,14 @@
     // Idle-timeout clock: the server, not a browser, owns takeover.
     UI.net.turnStartedAt = m.turnStartedAt || 0;
     UI.net.serverNow = m.serverNow || 0;
-    UI.net.turnTimeoutMs = m.turnTimeoutMs || 180000;
+    UI.net.turnTimeoutMs = Number.isFinite(m.turnTimeoutMs) && m.turnTimeoutMs > 0 ? m.turnTimeoutMs : 0;
     UI.net.undoAvailable = !!m.undoAvailable;
     UI.net.stateAt = Date.now();
     $('#setup').classList.add('hidden'); $('#lobby').classList.add('hidden');
     $('#game').classList.remove('hidden');
     recomputeOnlinePhase();
     render();
-    startIdleTimer();
+    if (UI.net.turnTimeoutMs) startIdleTimer(); else stopIdleTimer();
     if (G.phase === 'gameover') showWin();
   }
 
@@ -236,8 +249,12 @@
     const msLeft = idleMsLeft();
     const secs = Math.max(0, Math.ceil(msLeft / 1000));
     const offline = !activeConnected();
-    if (!myTurn()) ib.innerHTML = (offline || msLeft < 90000) ? `<span class="idle-wait">${offline ? '⚠ 对手已断线 · ' : ''}${secs} 秒后服务器AI接管</span>` : '';
-    else ib.innerHTML = (msLeft < 60000) ? `<span class="idle-warn">⏱️ 你还有 ${secs} 秒，否则由服务器AI代打</span>` : '';
+    if (!myTurn()) {
+      const visible = offline || msLeft < 90000;
+      ib.innerHTML = visible ? `<span class="idle-wait" title="${offline ? '当前玩家已断线；' : ''}${secs} 秒后服务器 AI 将自动完成该回合">${offline ? '⚠' : '⏱'} ${secs}s 后 AI 接管</span>` : '';
+    } else {
+      ib.innerHTML = msLeft < 60000 ? `<span class="idle-warn" title="若未及时行动，服务器 AI 将自动完成你的回合">⏱ ${secs}s 后 AI 代打</span>` : '';
+    }
   }
   // Derive the local UI phase from a snapshot. The board renders for everyone, but
   // you can only act on your own turn (interactable() also gates on myTurn()).
@@ -1204,6 +1221,9 @@
   // ---------------------------------------------------------------- events
   function bind() {
     // setup
+    if ($('#choose-online')) $('#choose-online').addEventListener('click', () => showSetupMode('online'));
+    if ($('#choose-local')) $('#choose-local').addEventListener('click', () => showSetupMode('local'));
+    $$('.setup-back').forEach((button) => button.addEventListener('click', () => showSetupMode('home')));
     $('#player-count').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       $$('#player-count button').forEach(x => x.classList.remove('active'));
@@ -1211,17 +1231,40 @@
     });
     $('#start-btn').addEventListener('click', startGame);
     // online lobby
+    const syncOnlineTimeout = () => {
+      const enabled = !!($('#online-timeout-enabled') && $('#online-timeout-enabled').checked);
+      if ($('#online-timeout-ms')) $('#online-timeout-ms').disabled = !enabled;
+      if ($('#online-timeout-field')) $('#online-timeout-field').classList.toggle('disabled', !enabled);
+    };
+    if ($('#online-timeout-enabled')) $('#online-timeout-enabled').addEventListener('change', syncOnlineTimeout);
+    syncOnlineTimeout();
     if ($('#online-create')) $('#online-create').addEventListener('click', async (event) => {
       const button = event.currentTarget;
       button.disabled = true;
       const oldText = button.textContent;
       button.textContent = '创建中…';
-      try { openOnline(await Net.createRoom(), true); }
+      try {
+        const enabled = !!$('#online-timeout-enabled').checked;
+        $('#lobby-timeout-enabled').checked = enabled;
+        $('#lobby-timeout-ms').value = $('#online-timeout-ms').value;
+        openOnline(await Net.createRoom(), true);
+      }
       catch (error) { alert((error && error.message) || '无法创建房间'); }
       finally { button.disabled = false; button.textContent = oldText; }
     });
-    if ($('#online-join')) $('#online-join').addEventListener('click', () => { const c = prompt('输入房间码：'); if (c) openOnline(c, false); });
-    if ($('#lobby-start')) $('#lobby-start').addEventListener('click', () => { if (window.Net) Net.start({ megas: !!($('#lobby-megas') && $('#lobby-megas').checked), pokemart: !!($('#lobby-pokemart') && $('#lobby-pokemart').checked) }); });
+    const joinOnline = () => { const c = ($('#online-room-code').value || '').trim(); if (c) openOnline(c, false); else flashHint('请输入房间码'); };
+    if ($('#online-join')) $('#online-join').addEventListener('click', joinOnline);
+    if ($('#online-room-code')) $('#online-room-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinOnline(); });
+    if ($('#lobby-timeout-enabled')) $('#lobby-timeout-enabled').addEventListener('change', () => { $('#lobby-timeout-ms').disabled = !UI.net || !UI.net.host || !$('#lobby-timeout-enabled').checked; });
+    if ($('#lobby-start')) $('#lobby-start').addEventListener('click', () => {
+      if (!window.Net) return;
+      const timeoutEnabled = !!($('#lobby-timeout-enabled') && $('#lobby-timeout-enabled').checked);
+      Net.start({
+        megas: !!($('#lobby-megas') && $('#lobby-megas').checked),
+        pokemart: !!($('#lobby-pokemart') && $('#lobby-pokemart').checked),
+        turnTimeoutMs: timeoutEnabled ? Number($('#lobby-timeout-ms').value) : null,
+      });
+    });
     if ($('#lobby-leave')) $('#lobby-leave').addEventListener('click', leaveOnline);
     if ($('#lobby-copy')) $('#lobby-copy').addEventListener('click', () => { try { navigator.clipboard.writeText(location.href); flashHint('邀请链接已复制'); } catch (e) { flashHint(location.href); } });
     if ($('#tutorial-btn')) $('#tutorial-btn').addEventListener('click', () => { if (window.Tutorial) Tutorial.start('base'); });
@@ -1300,6 +1343,7 @@
   }
 
   buildSeats(2);
+  showSetupMode('home');
   bind();
   setupZoom();
   trackDock();

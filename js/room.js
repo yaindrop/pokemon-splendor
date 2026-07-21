@@ -39,9 +39,11 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (E) {
   'use strict';
 
-  // Idle/disconnect turn timeout: after this long with no move, the host's AI
-  // may take over the active seat (enforced server-side; the host computes the move).
-  const TURN_TIMEOUT_MS = 180000; // 3 minutes
+  // Optional idle/disconnect takeover. New rooms default to OFF; these bounded
+  // choices keep room timers predictable and match the creation UI.
+  const TURN_TIMEOUT_MS = 180000; // legacy default for snapshots made before this setting existed
+  const TURN_TIMEOUT_OPTIONS = [60000, 180000, 300000, 600000];
+  const isTurnTimeoutMs = (value) => TURN_TIMEOUT_OPTIONS.includes(value);
 
   // strip the shared static card refs so a room state is pure data we can persist
   function serializeG(s) {
@@ -72,6 +74,7 @@
       this.seats = [];      // seats[i] = { token, name, connId|null, connected }
       this.conns = {};      // live connId -> seat index (>=0 seated, -1 spectator)
       this.turnStartedAt = 0; // server ms when the current turn began (idle-timeout base)
+      this.turnTimeoutMs = null; // null = no automatic AI takeover
       this.now = 0;         // current server ms, injected by the DO before each handler
       this.undoHistory = []; // authoritative snapshots at the start of each turn
       this.undoVote = null;  // ephemeral unanimous vote; never survives a restart
@@ -207,6 +210,7 @@
         this._reindexConnections();
       }
       opts = opts || {};
+      this.turnTimeoutMs = isTurnTimeoutMs(opts.turnTimeoutMs) ? opts.turnTimeoutMs : null;
       const names = this.seats.map((s, i) => s.name || ('训练家 ' + (i + 1)));
       // server-authoritative RNG: NEVER trust a client-supplied seed — it would let
       // the host precompute the entire deck order. Mint it here; fall back to the
@@ -248,12 +252,13 @@
 
     // The host's AI takes over a timed-out active seat. The host computes the move
     // from PUBLIC info only (it never sees the timed-out player's hidden hand) and
-    // sends the plan here; the server validates host + that the 3-min timeout has
+    // sends the plan here; the server validates host + that the configured timeout has
     // truly elapsed (anti-cheat), then runs the whole turn for the active seat.
     _takeover(connId, msg) {
       if (this.conns[connId] !== 0) return this.send(connId, { t: 'reject', reason: '只有房主可以代打' });
       if (!this.started || !this.G || this.G.phase !== 'play') return false;
-      if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) {
+      if (!this.turnTimeoutMs) return this.send(connId, { t: 'reject', reason: '本房间未启用超时接管' });
+      if (this.now - this.turnStartedAt < this.turnTimeoutMs) {
         this.send(connId, { t: 'reject', reason: '尚未超时' });
         return false;
       }
@@ -264,8 +269,8 @@
     // longer depends on the host browser staying online and submitting an AI plan.
     timeoutTurn(now, planOrFactory) {
       this.now = now;
-      if (!this.started || !this.G || this.G.phase !== 'play' || this.undoVote) return false;
-      if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) return false;
+      if (!this.turnTimeoutMs || !this.started || !this.G || this.G.phase !== 'play' || this.undoVote) return false;
+      if (this.now - this.turnStartedAt < this.turnTimeoutMs) return false;
       let plan = planOrFactory || {};
       if (typeof planOrFactory === 'function') {
         try { plan = planOrFactory(this.G) || {}; } catch (_) { plan = {}; }
@@ -274,9 +279,9 @@
     }
 
     nextTimeoutAt() {
-      if (!this.started || !this.G || this.G.phase !== 'play' || this.undoVote) return null;
+      if (!this.turnTimeoutMs || !this.started || !this.G || this.G.phase !== 'play' || this.undoVote) return null;
       if (!this.seats.some((seat) => seat.connected)) return null;
-      return this.turnStartedAt + TURN_TIMEOUT_MS;
+      return this.turnStartedAt + this.turnTimeoutMs;
     }
 
     _performTakeover(plan) {
@@ -373,7 +378,7 @@
       const view = (seat != null && seat >= 0) ? seat : -1;     // spectators: -1 matches no seat → everything stays redacted
       this.send(connId, {
         t: 'state', seq: this.seq, state: E.redactFor(this.G, view),
-        turnStartedAt: this.turnStartedAt, serverNow: this.now, turnTimeoutMs: TURN_TIMEOUT_MS,
+        turnStartedAt: this.turnStartedAt, serverNow: this.now, turnTimeoutMs: this.turnTimeoutMs,
         undoAvailable: this._undoAvailable(),
       });
     }
@@ -392,6 +397,7 @@
       const seats = this.seats.map(s => ({ token: s.token, name: s.name, connId: null, connected: false }));
       return {
         seq: this.seq, started: this.started, seats, turnStartedAt: this.turnStartedAt,
+        turnTimeoutMs: this.turnTimeoutMs,
         g: this.G ? serializeG(this.G) : null,
         undoHistory: this.undoHistory.slice(-20),
       };
@@ -401,6 +407,11 @@
       this.seq = snap.seq || 0;
       this.started = !!snap.started;
       this.turnStartedAt = snap.turnStartedAt || 0;
+      // Old persisted games had an implicit 3-minute timer and no field; preserve
+      // their live rule while all newly-created rooms default to no timeout.
+      this.turnTimeoutMs = Object.prototype.hasOwnProperty.call(snap, 'turnTimeoutMs')
+        ? (isTurnTimeoutMs(snap.turnTimeoutMs) ? snap.turnTimeoutMs : null)
+        : (this.started ? TURN_TIMEOUT_MS : null);
       this.seats = (snap.seats || []).map(s => ({ token: s.token, name: s.name, connId: null, connected: false }));
       this.conns = {};
       this.G = snap.g ? reattachG(snap.g, this.DB, this.megaDB, this.pokemartDB) : null;
@@ -409,5 +420,5 @@
     }
   }
 
-  return { Room, serializeG, reattachG, TURN_TIMEOUT_MS };
+  return { Room, serializeG, reattachG, TURN_TIMEOUT_MS, TURN_TIMEOUT_OPTIONS, isTurnTimeoutMs };
 });

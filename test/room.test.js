@@ -203,7 +203,7 @@ test('takeover: host-only + must wait the timeout, then plays the active seat & 
   room.now = 0;
   room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
   room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
-  room.onMessage('cA', { t: 'start', opts: {} });               // turn=0, turnStartedAt=0
+  room.onMessage('cA', { t: 'start', opts: { turnTimeoutMs: 180000 } }); // turn=0, turnStartedAt=0
   room.onMessage('cA', { t: 'action', seq: 1, action: TAKE });
   room.onMessage('cA', { t: 'action', seq: 2, action: { type: 'endTurn' } }); // → turn=1 (B), turnStartedAt=0
   assert.strictEqual(last('cA', 'state').state.turn, 1);
@@ -231,7 +231,7 @@ test('takeover with an empty/garbage plan still advances the turn (never stalls)
   room.now = 0;
   room.onMessage('cA', { t: 'join', token: 'tA' });
   room.onMessage('cB', { t: 'join', token: 'tB' });
-  room.onMessage('cA', { t: 'start', opts: {} });               // turn = 0 (host A)
+  room.onMessage('cA', { t: 'start', opts: { turnTimeoutMs: 180000 } }); // turn = 0 (host A)
   room.now = 200000;
   room.onMessage('cA', { t: 'takeover', plan: {} });            // empty → forced legal fallback
   assert.strictEqual(last('cA', 'state').state.turn, 1, 'turn advanced despite empty plan');
@@ -242,11 +242,22 @@ test('state broadcast carries turnStartedAt / serverNow / turnTimeoutMs for the 
   room.now = 5000;
   room.onMessage('cA', { t: 'join', token: 'tA' });
   room.onMessage('cB', { t: 'join', token: 'tB' });
-  room.onMessage('cA', { t: 'start', opts: {} });
+  room.onMessage('cA', { t: 'start', opts: { turnTimeoutMs: 180000 } });
   const s = last('cA', 'state');
   assert.strictEqual(s.turnStartedAt, 5000);
   assert.strictEqual(s.serverNow, 5000);
   assert.ok(s.turnTimeoutMs > 0, 'a turn timeout is advertised');
+});
+
+test('online rooms disable timeout takeover by default', () => {
+  const { room, last } = makeRoom();
+  room.now = 5000;
+  room.onMessage('cA', { t: 'join', token: 'tA' });
+  room.onMessage('cB', { t: 'join', token: 'tB' });
+  room.onMessage('cA', { t: 'start', opts: {} });
+  assert.strictEqual(last('cA', 'state').turnTimeoutMs, null);
+  assert.strictEqual(room.nextTimeoutAt(), null);
+  assert.strictEqual(room.timeoutTurn(99999999), false);
 });
 
 test('a lobby cannot start until at least two connected players are seated', () => {
@@ -321,7 +332,7 @@ test('the server can advance any timed-out turn without a host client', () => {
   room.now = 0;
   room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
   room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
-  room.onMessage('cA', { t: 'start', opts: {} });
+  room.onMessage('cA', { t: 'start', opts: { turnTimeoutMs: 180000 } });
 
   assert.strictEqual(room.timeoutTurn(1000), false, 'not timed out yet');
   assert.strictEqual(room.timeoutTurn(200000), true, 'server performed the timed-out turn');

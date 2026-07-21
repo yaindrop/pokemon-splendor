@@ -1,7 +1,7 @@
 const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer, WebSocket } = require('ws');
-const { Room, TURN_TIMEOUT_MS } = require('../js/room.js');
+const { Room, isTurnTimeoutMs } = require('../js/room.js');
 const Engine = require('../js/engine.js');
 const AI = require('../js/ai.js');
 const DB = require('../data/cards.json');
@@ -49,8 +49,9 @@ function validMessage(message) {
   if (message.t === 'start') {
     if (message.opts == null) return true;
     if (typeof message.opts !== 'object' || Array.isArray(message.opts)) return false;
-    return Object.keys(message.opts).every((key) => ['megas', 'pokemart'].includes(key)) &&
-      ['megas', 'pokemart'].every((key) => message.opts[key] == null || typeof message.opts[key] === 'boolean');
+    return Object.keys(message.opts).every((key) => ['megas', 'pokemart', 'turnTimeoutMs'].includes(key)) &&
+      ['megas', 'pokemart'].every((key) => message.opts[key] == null || typeof message.opts[key] === 'boolean') &&
+      (message.opts.turnTimeoutMs == null || isTurnTimeoutMs(message.opts.turnTimeoutMs));
   }
   return true;
 }
