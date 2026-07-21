@@ -23,5 +23,6 @@ export default defineConfig({
   build: {
     target: 'baseline-widely-available',
     sourcemap: true,
+    manifest: 'vite-manifest.json',
   },
 });

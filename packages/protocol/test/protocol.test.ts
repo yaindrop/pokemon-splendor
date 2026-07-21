@@ -20,7 +20,6 @@ test('client protocol accepts every supported command and rejects malformed inpu
     { t: 'action', seq: 1, action: { type: 'take', colors: ['red', 'blue', 'black'] } },
     { t: 'undo-vote', approve: true },
     { t: 'start' },
-    { t: 'start', opts: null },
     { t: 'start', opts: { megas: true, pokemart: false, turnTimeoutMs: 60_000 } },
   ];
   for (const message of validMessages) assert.equal(isClientMessage(message), true);
@@ -32,11 +31,14 @@ test('client protocol accepts every supported command and rejects malformed inpu
     { t: 'unknown' },
     { t: 'ping', extra: true },
     { t: 'join', token: 'short' },
+    { t: 'join', name: null },
     { t: 'join', name: 1 },
     { t: 'action', seq: 0, action: { type: 'pass' } },
     { t: 'action', seq: 1, action: { type: 'take', colors: ['purple'] } },
     { t: 'undo-vote', approve: 'yes' },
     { t: 'start', opts: [] },
+    { t: 'start', opts: null },
+    { t: 'start', opts: { megas: null } },
     { t: 'start', opts: { turnTimeoutMs: 1 } },
     { t: 'start', opts: { unknown: true } },
   ];
@@ -83,6 +85,7 @@ test('server protocol validates state and control message variants', () => {
       state: { ...state, decks: { ...state.decks, stage1: ['s1_01'] } },
     },
     { t: 'reject', reason: 1 },
+    { t: 'reject', reason: '非法操作', seq: null },
     { t: 'over', winner: 'zero' },
     { t: 'undo-vote', requesterSeat: 0, approvals: [-1], total: 2 },
     { t: 'undo-result', accepted: 'yes', reason: '' },

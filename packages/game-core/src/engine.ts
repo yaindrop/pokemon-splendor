@@ -1223,15 +1223,15 @@ function validActionShape(a: unknown): a is GameAction {
   const stringList = (value: unknown, max: number): value is readonly string[] =>
     Array.isArray(value) && value.length <= max && value.every(shortId);
   function validCaptureOpts(opts: unknown, depth: number): opts is CaptureOptions {
-    if (opts == null) return true;
+    if (opts === undefined) return true;
     if (depth > 3 || !isRecord(opts)) return false;
     const allowed = ['copyTargetId', 'spendPokedex', 'discardCards', 'freeTakeId', 'freeOpts'];
     if (!Object.keys(opts).every((k) => allowed.indexOf(k) >= 0)) return false;
-    if (opts['copyTargetId'] != null && !shortId(opts['copyTargetId'])) return false;
-    if (opts['freeTakeId'] != null && !shortId(opts['freeTakeId'])) return false;
-    if (opts['spendPokedex'] != null && !stringList(opts['spendPokedex'], 10)) return false;
-    if (opts['discardCards'] != null && !stringList(opts['discardCards'], 10)) return false;
-    return opts['freeOpts'] == null || validCaptureOpts(opts['freeOpts'], depth + 1);
+    if (opts['copyTargetId'] !== undefined && !shortId(opts['copyTargetId'])) return false;
+    if (opts['freeTakeId'] !== undefined && !shortId(opts['freeTakeId'])) return false;
+    if (opts['spendPokedex'] !== undefined && !stringList(opts['spendPokedex'], 10)) return false;
+    if (opts['discardCards'] !== undefined && !stringList(opts['discardCards'], 10)) return false;
+    return opts['freeOpts'] === undefined || validCaptureOpts(opts['freeOpts'], depth + 1);
   }
   switch (a['type']) {
     case 'take':
@@ -1255,7 +1255,8 @@ function validActionShape(a: unknown): a is GameAction {
       const fromField = target['fromField'];
       const fromDeck = target['fromDeck'];
       return (
-        (shortId(fromField) && fromDeck == null) || (fromField == null && isFieldTier(fromDeck))
+        (shortId(fromField) && fromDeck === undefined) ||
+        (fromField === undefined && isFieldTier(fromDeck))
       );
     }
     case 'evolve':

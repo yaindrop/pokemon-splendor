@@ -7,7 +7,7 @@
 	root * /srv
 	file_server
 
-	@entry path / /index.html /sw.js /manifest.json
+	@entry path / /index.html /sw.js /manifest.json /vite-manifest.json
 	header @entry Cache-Control "no-cache"
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=2592000, immutable"

@@ -60,7 +60,7 @@ function isSupply(value: unknown): boolean {
   return (
     isTokenCounts(value) &&
     isRecord(value) &&
-    (value['megaToken'] == null || isNonNegativeInteger(value['megaToken']))
+    (value['megaToken'] === undefined || isNonNegativeInteger(value['megaToken']))
   );
 }
 
@@ -90,7 +90,7 @@ function isPlayer(value: unknown): boolean {
     Array.isArray(value['reserve']) &&
     value['reserve'].every((item) => typeof item === 'string' || isHiddenReserve(item)) &&
     isAssoc(value['assoc']) &&
-    (value['diff'] == null ||
+    (value['diff'] === undefined ||
       value['diff'] === 'easy' ||
       value['diff'] === 'normal' ||
       value['diff'] === 'hard' ||
@@ -109,7 +109,7 @@ function isDecks(value: unknown, redacted: boolean): boolean {
     Array.isArray(deck) && deck.every((item) => (redacted ? item === null : isCardIdOrNull(item)));
   return (
     FIELD_TIERS.every((tier) => validDeck(value[tier])) &&
-    POKEMART_TIERS.every((tier) => value[tier] == null || validDeck(value[tier]))
+    POKEMART_TIERS.every((tier) => value[tier] === undefined || validDeck(value[tier]))
   );
 }
 
@@ -119,7 +119,7 @@ function isField(value: unknown): boolean {
     Array.isArray(cards) && cards.every(isCardIdOrNull);
   return (
     FIELD_TIERS.every((tier) => validCards(value[tier])) &&
-    POKEMART_TIERS.every((tier) => value[tier] == null || validCards(value[tier]))
+    POKEMART_TIERS.every((tier) => value[tier] === undefined || validCards(value[tier]))
   );
 }
 
@@ -256,7 +256,7 @@ export function isServerMessage(message: unknown): message is RoomServerMessage 
     case 'reject':
       return (
         typeof message['reason'] === 'string' &&
-        (message['seq'] == null || isNonNegativeInteger(message['seq']))
+        (message['seq'] === undefined || isNonNegativeInteger(message['seq']))
       );
     case 'over':
       return isNullableInteger(message['winner']);
@@ -284,8 +284,8 @@ export function isClientMessage(message: unknown): message is RoomClientMessage 
     case 'join':
       return (
         hasOnlyKeys(message, ['t', 'name', 'token']) &&
-        (message['name'] == null || typeof message['name'] === 'string') &&
-        (message['token'] == null ||
+        (message['name'] === undefined || typeof message['name'] === 'string') &&
+        (message['token'] === undefined ||
           (typeof message['token'] === 'string' && /^[a-f0-9]{64}$/.test(message['token'])))
       );
     case 'action':
@@ -299,13 +299,13 @@ export function isClientMessage(message: unknown): message is RoomClientMessage 
       return hasOnlyKeys(message, ['t', 'approve']) && typeof message['approve'] === 'boolean';
     case 'start': {
       if (!hasOnlyKeys(message, ['t', 'opts'])) return false;
-      if (message['opts'] == null) return true;
+      if (message['opts'] === undefined) return true;
       if (!isRecord(message['opts'])) return false;
       const options = message['opts'];
       return (
         hasOnlyKeys(options, ['megas', 'pokemart', 'turnTimeoutMs']) &&
         ['megas', 'pokemart'].every(
-          (key) => options[key] == null || typeof options[key] === 'boolean',
+          (key) => options[key] === undefined || typeof options[key] === 'boolean',
         ) &&
         (options['turnTimeoutMs'] == null || Room.isTurnTimeoutMs(options['turnTimeoutMs']))
       );
@@ -324,14 +324,14 @@ function isLog(value: unknown): boolean {
         isNonNegativeInteger(entry['turn']) &&
         isNonNegativeInteger(entry['round']) &&
         typeof entry['msg'] === 'string' &&
-        (entry['kind'] == null || typeof entry['kind'] === 'string') &&
-        (entry['cardId'] == null || typeof entry['cardId'] === 'string') &&
-        (entry['colors'] == null ||
+        (entry['kind'] === undefined || typeof entry['kind'] === 'string') &&
+        (entry['cardId'] === undefined || typeof entry['cardId'] === 'string') &&
+        (entry['colors'] === undefined ||
           (Array.isArray(entry['colors']) &&
             entry['colors'].every((color) =>
               TOKEN_COLORS.some((candidate) => candidate === color),
             ))) &&
-        (entry['pay'] == null || isTokenCounts(entry['pay']))
+        (entry['pay'] === undefined || isTokenCounts(entry['pay']))
       );
     })
   );

@@ -1,5 +1,5 @@
 /* Pokémon Splendor — small offline shell plus runtime asset cache. */
-const CACHE = 'ps-cache-v18';
+const CACHE = 'ps-cache-v19';
 const BALLS = ['red', 'blue', 'black', 'pink', 'yellow', 'purple'].map(
   (color) => `/assets/balls/${color}.png`,
 );
@@ -21,17 +21,45 @@ const STATIC_SHELL = [
 
 async function cacheShell() {
   const cache = await caches.open(CACHE);
-  const entry = await fetch('/index.html', { cache: 'no-store' });
+  const [entry, manifestResponse] = await Promise.all([
+    fetch('/index.html', { cache: 'no-store' }),
+    fetch('/vite-manifest.json', { cache: 'no-store' }),
+  ]);
   if (!entry.ok) throw new Error(`无法缓存应用入口：${entry.status}`);
+  if (!manifestResponse.ok) throw new Error(`无法读取构建清单：${manifestResponse.status}`);
   const html = await entry.clone().text();
+  const manifest = await manifestResponse.clone().json();
   const entryAssets = [...html.matchAll(/\b(?:src|href)="([^"]+)"/g)]
     .map((match) => new URL(match[1], self.location.origin))
     .filter((url) => url.origin === self.location.origin)
     .map((url) => url.pathname + url.search);
+  const buildAssets = Object.values(manifest).flatMap((item) => [
+    item.file,
+    ...(item.css || []),
+    ...(item.assets || []),
+  ]);
+  const nestedAssets = (
+    await Promise.all(
+      buildAssets
+        .filter((asset) => asset.endsWith('.js'))
+        .map(async (asset) => {
+          const response = await fetch(`/${asset}`, { cache: 'no-store' });
+          if (!response.ok) throw new Error(`无法读取构建资源：${response.status}`);
+          return [...(await response.text()).matchAll(/\/assets\/[\w.-]+/g)].map(
+            (match) => match[0],
+          );
+        }),
+    )
+  ).flat();
   await Promise.all([
     cache.put('/', entry.clone()),
     cache.put('/index.html', entry),
-    cache.addAll([...new Set([...STATIC_SHELL, ...entryAssets])]),
+    cache.put('/vite-manifest.json', manifestResponse),
+    cache.addAll(
+      [...new Set([...STATIC_SHELL, ...entryAssets, ...buildAssets, ...nestedAssets])].map(
+        (asset) => (asset.startsWith('/') ? asset : `/${asset}`),
+      ),
+    ),
   ]);
 }
 
