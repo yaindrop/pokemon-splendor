@@ -26,7 +26,7 @@ type NetEvent = keyof NetEventMap;
 
 export interface NetApi {
   connect(code: string, name: string): void;
-  on<K extends NetEvent>(event: K, handler: (data: NetEventMap[K]) => void): void;
+  on<K extends NetEvent>(event: K, handler: (data: NetEventMap[K]) => void): () => void;
   send(message: RoomClientMessage): void;
   action(move: GameAction): void;
   start(options?: RoomStartOptions): void;
@@ -61,10 +61,14 @@ let closedByUs = false;
 let sequence = 0;
 let retry = 0;
 
-function on<K extends NetEvent>(event: K, handler: (data: NetEventMap[K]) => void): void {
-  handlers.set(event, (data: unknown): void => {
+function on<K extends NetEvent>(event: K, handler: (data: NetEventMap[K]) => void): () => void {
+  const wrapped = (data: unknown): void => {
     if (isEventPayload(event, data)) handler(data);
-  });
+  };
+  handlers.set(event, wrapped);
+  return (): void => {
+    if (handlers.get(event) === wrapped) handlers.delete(event);
+  };
 }
 
 function emit<K extends NetEvent>(event: K, data: NetEventMap[K]): void {

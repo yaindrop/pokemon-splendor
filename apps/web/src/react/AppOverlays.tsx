@@ -1,17 +1,23 @@
 import { AlertDialog } from '@base-ui/react/alert-dialog';
-import { type ReactElement, useSyncExternalStore } from 'react';
-import {
-  getPendingMasterBallConfirmation,
-  settleMasterBallConfirmation,
-  subscribeToMasterBallConfirmation,
-} from './masterBallConfirmation.js';
+import { Provider, useAtomValue } from 'jotai';
+import type { ReactElement } from 'react';
+import { GameApp } from './GameApp.js';
+import { FlightLayer } from './game/motion.js';
+import { settleMasterBallConfirmation } from './masterBallConfirmation.js';
+import { masterBallConfirmationAtom, uiStore } from './uiStore.js';
 
 export function AppOverlays(): ReactElement {
-  const pending = useSyncExternalStore(
-    subscribeToMasterBallConfirmation,
-    getPendingMasterBallConfirmation,
-    getPendingMasterBallConfirmation,
+  return (
+    <Provider store={uiStore}>
+      <GameApp />
+      <FlightLayer />
+      <MasterBallConfirmationOverlay />
+    </Provider>
   );
+}
+
+function MasterBallConfirmationOverlay(): ReactElement {
+  const pending = useAtomValue(masterBallConfirmationAtom);
 
   return (
     <AlertDialog.Root
@@ -34,15 +40,14 @@ export function AppOverlays(): ReactElement {
             </AlertDialog.Description>
             <div className="master-confirm-actions">
               <AlertDialog.Close className="ghost">返回</AlertDialog.Close>
-              <button
-                type="button"
+              <AlertDialog.Close
                 className="primary"
                 onClick={() => {
                   settleMasterBallConfirmation(true);
                 }}
               >
                 使用并捕捉
-              </button>
+              </AlertDialog.Close>
             </div>
           </AlertDialog.Popup>
         </AlertDialog.Viewport>

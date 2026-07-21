@@ -24,6 +24,10 @@
     "apps/server/src/**/*.ts",
     "apps/web/src/net.ts",
     "apps/web/src/react/masterBallConfirmation.ts",
+    "apps/web/src/react/uiStore.ts",
+    "apps/web/src/react/game/ai.ts",
+    "apps/web/src/react/game/tutorial.ts",
+    "apps/web/src/session/**/*.ts",
     "packages/**/*.test.ts"
   ]
 }

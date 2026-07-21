@@ -3,7 +3,6 @@ import {
   getPendingMasterBallConfirmation,
   requestMasterBallConfirmation,
   settleMasterBallConfirmation,
-  subscribeToMasterBallConfirmation,
 } from '../src/react/masterBallConfirmation.js';
 
 afterEach(() => {
@@ -12,19 +11,12 @@ afterEach(() => {
 
 describe('master ball confirmation bridge', () => {
   it('publishes a request and resolves the selected answer', async () => {
-    let notifications = 0;
-    const unsubscribe = subscribeToMasterBallConfirmation(() => {
-      notifications += 1;
-    });
-
     const answer = requestMasterBallConfirmation(2);
     expect(getPendingMasterBallConfirmation()?.count).toBe(2);
 
     settleMasterBallConfirmation(true);
     await expect(answer).resolves.toBe(true);
     expect(getPendingMasterBallConfirmation()).toBeNull();
-    expect(notifications).toBe(2);
-    unsubscribe();
   });
 
   it('rejects overlapping or invalid requests', () => {

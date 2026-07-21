@@ -8,5 +8,8 @@ if (!overlayRoot) throw new Error('缺少 React 覆盖层挂载点：#react-root
 
 createRoot(overlayRoot).render(createElement(AppOverlays));
 
-await import('./ui.js');
-await import('./tutorial.js');
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => undefined);
+  });
+}

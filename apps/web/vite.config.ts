@@ -26,5 +26,23 @@ export default defineConfig({
     target: 'baseline-widely-available',
     sourcemap: true,
     manifest: 'vite-manifest.json',
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: 'react-vendor',
+              test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+              priority: 3,
+            },
+            {
+              name: 'base-ui-vendor',
+              test: /node_modules[\\/]@base-ui[\\/]/,
+              priority: 2,
+            },
+          ],
+        },
+      },
+    },
   },
 });
