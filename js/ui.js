@@ -369,7 +369,8 @@
     } else {
       state = 'turn-mine'; icon = '⚡'; kicker = '训练家回合'; main = `${escapeHTML(p.name)}，请选择行动`; sub = '拿取精灵球 · 捕捉宝可梦 · 保留卡牌';
     }
-    banner.className = `turn-banner ${state}`;
+    banner.className = 'turn-banner';
+    $('#topbar').className = state;
     banner.innerHTML = `<span class="turn-beacon" aria-hidden="true">${icon}</span><span class="turn-copy"><span class="turn-kicker">${kicker}</span><strong>${main}</strong><small>${sub}</small></span>${G.lastRound && G.phase === 'play' ? '<span class="last-round">最后一轮</span>' : ''}`;
   }
 
@@ -586,10 +587,12 @@
 
   function renderActionBar() {
     const bar = $('#action-bar');
-    if (G.phase === 'gameover') { bar.innerHTML = '<div class="act-hint">游戏已结束。</div>'; return; }
+    const idle = () => { bar.innerHTML = ''; bar.classList.add('action-idle'); };
+    bar.classList.remove('action-idle');
+    if (G.phase === 'gameover') { idle(); return; }
     const p = me();
-    if (p.isAI) { bar.innerHTML = '<div class="act-hint">电脑正在行动…</div>'; return; }
-    if (isOnline() && !myTurn()) { bar.innerHTML = `<div class="act-hint">等待 <b>${escapeHTML(G.players[G.turn].name)}</b> 行动…<br><span style="font-size:12px;opacity:.7">轮到你时这里会出现操作按钮</span></div>`; return; }
+    if (p.isAI) { idle(); return; }
+    if (isOnline() && !myTurn()) { idle(); return; }
 
     if (UI.phase === 'discard') {
       const over = E.tokenTotal(p) - E.TOKEN_MAX;
@@ -648,7 +651,7 @@
         <div class="act-buttons"><button class="primary" data-act="reserve-deck">保留牌堆顶</button><button class="ghost" data-act="clear-sel">取消</button></div>`;
       return;
     }
-    bar.innerHTML = `<div class="act-hint"><b>选择行动</b><br>点击补给区拿球，或点击牌桌上的卡牌进行捕捉、保留。</div>`;
+    idle();
   }
 
   function dedupeEvo(opts) {
@@ -713,9 +716,13 @@
            <div class="pscore">${E.scoreOf(G, p)}<small>/${G.megasEnabled ? E.MEGA_WIN_SCORE : E.WIN_SCORE}</small></div>
          </div>
          ${p.buried.length ? `<div class="buried-badge">已进化 ${p.buried.length}</div>` : ''}
-         <div class="pstats">${chips}</div>
-         <div class="pcards">${stacks || '<span style="color:var(--muted);font-size:12px">尚无宝可梦</span>'}</div>
-         ${rz}`;
+         <div class="player-body">
+           <div class="player-assets">
+             <div class="pstats">${chips}</div>
+             <div class="pcards">${stacks || '<span style="color:var(--muted);font-size:12px">尚无宝可梦</span>'}</div>
+           </div>
+           ${rz}
+         </div>`;
       wrap.appendChild(el);
     }
   }
