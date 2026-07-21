@@ -564,29 +564,34 @@
   function renderSupply() {
     const counts = {}; UI.pick.forEach(c => counts[c] = (counts[c] || 0) + 1);
     const human = (isOnline() ? myTurn() : isHuman(G.turn)) && G.phase === 'play' && UI.phase === 'main' && !G.acted;
-    let html = `<div class="panel-title"><span>精灵球补给</span><small>${human ? '点击选择' : '当前库存'}</small></div>`;
+    const quickActions = UI.pick.length
+      ? `<span class="supply-quick-actions"><button type="button" class="supply-confirm" data-supply-confirm aria-label="确认拿取" title="确认拿取" ${takeSelectionComplete() ? '' : 'disabled'}>✓</button><button type="button" class="supply-cancel" data-supply-clear aria-label="取消选择" title="取消选择">×</button></span>`
+      : `<small>${human ? '左键选 · 右键还' : '当前库存'}</small>`;
+    let html = `<div class="panel-title"><span>精灵球补给</span>${quickActions}</div>`;
     for (const color of E.ALL_TOKENS) {
       const isMaster = color === 'purple';
       const pick = counts[color] || 0;
       const selectable = human && !isMaster && canAddBall(color);
       const dis = (!human || isMaster || (!selectable && !pick)) ? ' disabled' : '';
-      html += `<button type="button" class="supply-row${pick ? ' picked' : ''}${dis}" data-supply-color="${color}" ${(!isMaster) ? `data-color="${color}"` : ''} ${!selectable ? 'disabled' : ''} aria-label="${BALL_NAMES[color]}，库存 ${G.supply[color]}">
+      html += `<button type="button" class="supply-row${pick ? ' picked' : ''}${dis}" data-supply-color="${color}" ${(!isMaster) ? `data-color="${color}"` : ''} ${(!selectable && !pick) ? 'disabled' : ''} aria-label="${BALL_NAMES[color]}，库存 ${G.supply[color]}${pick ? `，已选 ${pick}` : ''}">
                  ${ball(color, '')}
-                 <span class="name">${BALL_NAMES[color]}</span>
-                 ${pick ? `<span class="picked-n">已选 ${pick}</span>` : ''}
-                 <span class="cnt" title="库存数量">${G.supply[color]}</span>
+                 <span class="supply-tooltip" role="tooltip">${BALL_NAMES[color]}${pick ? ' · 右键放回' : ''}</span>
+                 ${pick ? `<span class="picked-n">✓ ${pick}</span>` : ''}
+                 <span class="cnt">${G.supply[color]}</span>
                </button>`;
     }
     if (G.megasEnabled) {
       const canTake = human && me().megaToken < 1 && G.supply.megaToken > 0;
       const held = me().megaToken;
-      html += `<button type="button" class="supply-row mega-row${canTake ? '' : ' disabled'}" data-supply-color="mega" ${canTake ? 'data-take-mega="1"' : 'disabled'} title="花费整个回合获得1个 Mega 代币">
+      html += `<button type="button" class="supply-row mega-row${canTake ? '' : ' disabled'}" data-supply-color="mega" ${canTake ? 'data-take-mega="1"' : 'disabled'} aria-label="Mega 代币，库存 ${G.supply.megaToken}；花费整个回合获得 1 个">
                  <div class="ball mega-token"></div>
-                 <span class="name">Mega 代币${held ? '（已持有）' : ''}</span>
+                 <span class="supply-tooltip" role="tooltip">Mega 代币${held ? '（已持有）' : ''}</span>
                  <span class="cnt">${G.supply.megaToken}</span>
                </button>`;
     }
-    $('#supply').innerHTML = html;
+    const supply = $('#supply');
+    supply.classList.toggle('has-pick', UI.pick.length > 0);
+    supply.innerHTML = html;
   }
 
   function canAddBall(color) {
@@ -600,6 +605,14 @@
       return UI.pick.length < 3 && G.supply[color] > 0;                       // add distinct
     }
     return UI.pick.length < 3 && !counts[color] && G.supply[color] > 0;       // add 3rd distinct
+  }
+
+  function takeSelectionComplete() {
+    if (!G || !UI.pick.length) return false;
+    const distinct = new Set(UI.pick);
+    if (UI.pick.length === 2 && distinct.size === 1) return G.supply[UI.pick[0]] >= 4;
+    const available = E.COLORS.filter(color => G.supply[color] > 0).length;
+    return distinct.size === UI.pick.length && UI.pick.length === Math.min(3, available);
   }
 
   function renderActionBar() {
@@ -640,12 +653,7 @@
       return;
     }
     // main phase
-    if (UI.pick.length) {
-      const trayHtml = UI.pick.map(c => `<div class="ball ${c} sm"></div>`).join('');
-      bar.innerHTML = `<div class="act-hint">已选精灵球（${UI.pick.length}）：</div><div class="tray">${trayHtml}</div>
-        <div class="act-buttons"><button class="primary" data-act="confirm-take">确定拿取</button><button class="ghost" data-act="clear-take">取消</button></div>`;
-      return;
-    }
+    if (UI.pick.length) { idle(); return; }
     if (UI.selCard) {
       const c = byId[UI.selCard];
       const info = affordInfo(c);
@@ -764,6 +772,13 @@
     if (!interactable()) return;
     if (canAddBall(color)) { UI.pick.push(color); UI.selCard = UI.selDeck = null; render(); }
   }
+  function onSupplyReturn(color) {
+    if (!interactable()) return;
+    const index = UI.pick.lastIndexOf(color);
+    if (index < 0) return;
+    UI.pick.splice(index, 1);
+    render();
+  }
   function onCardClick(id) {
     if (!interactable() || UI.pick.length) return;
     if (byId[id] && byId[id].tier === 'mega') return; // Mega cards: zoom only; evolve at end of turn
@@ -834,6 +849,7 @@
   }
 
   function doTake() {
+    if (!takeSelectionComplete()) return;
     const colors = UI.pick.slice(); const pid = G.turn;
     if (isOnline()) { Net.action({ type: 'take', colors }); UI.pick = []; render(); return; }
     applyAnimated({ type: 'take', colors }, pid, () => { const r = E.actionTake(G, colors); if (r.ok) UI.pick = []; return r; }, afterMainAction);
@@ -1289,8 +1305,15 @@
 
     // delegated game clicks
     $('#supply').addEventListener('click', (e) => {
+      if (e.target.closest('[data-supply-confirm]')) { doTake(); return; }
+      if (e.target.closest('[data-supply-clear]')) { UI.pick = []; render(); return; }
       if (e.target.closest('[data-take-mega]')) { doTakeMega(); return; }
       const r = e.target.closest('[data-color]'); if (r) onSupplyClick(r.dataset.color);
+    });
+    $('#supply').addEventListener('contextmenu', (e) => {
+      const r = e.target.closest('[data-color]'); if (!r) return;
+      e.preventDefault();
+      onSupplyReturn(r.dataset.color);
     });
     $('#field').addEventListener('click', (e) => {
       const rb = e.target.closest('[data-reserve-card]'); if (rb) { onCardClick(rb.dataset.reserveCard); doReserveCard(); return; }
