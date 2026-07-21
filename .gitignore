@@ -22,3 +22,4 @@ assets/policy.json
 
 # self-hosted runtime data
 runtime/
+apps/server/data/
