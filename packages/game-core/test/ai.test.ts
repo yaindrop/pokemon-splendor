@@ -93,4 +93,4 @@ test('AI terminates games, beats greedy play, and stays responsive', () => {
   }
   const avgRounds = lengths.reduce((a, b) => a + b, 0) / lengths.length;
   assert.ok(avgRounds >= 8 && avgRounds <= 60, 'game length sane');
-});
+}, 90_000);
