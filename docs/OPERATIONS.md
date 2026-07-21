@@ -25,7 +25,7 @@ systemctl list-timers pokemon-splendor-backup.timer
 ## 故障处理
 
 - 无法建房：检查 `app` 日志、数据目录权限和磁盘空间。
-- 页面正常但无法联机：确认 Caddy 对 `/api/*`、`/room/*` 的反代及安全组 443。
-- 证书失败：确认域名 A/AAAA 记录、80/443 入站连通，检查 Caddy 日志。
-- 对局断线：浏览器会指数退避重连；不要删除 `localStorage` 中对应房间 token。
+- 页面正常但无法联机：确认 Caddy 对 `/api/*`、`/room/*` 的反代；IP 模式检查 TCP 80，域名模式检查 TCP 443。
+- 证书失败：确认域名 A/AAAA 记录、80/443 入站连通，检查 Caddy 日志；纯 IP 部署应使用 `SITE_ADDRESS=:80`，不申请证书。
+- 对局断线：浏览器会指数退避重连；不要删除当前标签页 `sessionStorage` 中对应房间 token。
 - 紧急停服：`docker compose down`。不要加 `-v`，否则会同时移除 Caddy 证书数据卷。

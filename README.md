@@ -1,92 +1,82 @@
 # 璀璨宝石 · 宝可梦（Pokémon Splendor）
 
-一个可在浏览器中直接游玩的《璀璨宝石：宝可梦》网页版 —— 收集精灵球，捕捉并**进化**宝可梦，率先达到 **18 分**成为冠军训练家。
+一款服务端权威、支持 2–4 人联机与本地对战的《璀璨宝石：宝可梦》网页版。玩家领取精灵球、捕捉及进化宝可梦，率先达到目标分数即有机会成为冠军训练家。
 
-支持 **2–4 人本地热座**（pass-and-play）、**电脑对手**（新手 / 普通 / 高手 / 究极四档）与**在线联机对战**（房间码 + 邀请链接）。另含两套可选**扩展**（超级进化 Megas、Pokémart 商店）、零基础**新手教程**、移动端 / PWA 适配与**本地存档续局**。
+支持本地热座、四档电脑对手、房间码联机、断线重连、全员同意悔棋、可选超时 AI 接管、超级进化、Pokémart、新手教程、PWA 与本地续局。
 
-> 卡牌美术与数值均源自 Tabletop Simulator 模组「**璀璨宝石：宝可梦（自动脚本）**」。由于模组只把分值写进卡面，本项目用视觉识别从 100 张原始卡面逐张提取了：捕捉成本、折扣球、奖杯点数、进化目标与进化花费，并经二次复核 + 标签交叉校验。
+## 本地开发
 
-## 直接游玩
+要求：
 
-双击打开 `index.html` 即可（纯静态，无需服务器）。
-若浏览器对本地文件有跨域限制，用任意静态服务器起一个本地服务：
+- Node.js 24.18.0 或更高的 24.x LTS
+- pnpm 11.15.1（仓库锁定此版本）
+- uv 0.11.30（仅训练工具需要）
 
 ```bash
-# 任选其一（在本目录下执行）
-python -m http.server 8000
-npx serve .
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-然后访问 http://localhost:8000 。
+打开 <http://localhost:5173>。WebSocket 服务默认监听 `http://localhost:3000`，Vite 开发服务器会代理 `/api`、`/room`、`/healthz` 与 `/readyz`。
 
-刷新或退出后，开局界面会提供「▶ 继续上一局」——每个回合边界都会把对局快照存到 `localStorage`。
+常用命令：
 
-## 在线联机对战
+```bash
+pnpm check          # 格式、Lint、类型、测试、Python 检查与生产构建
+pnpm typecheck      # TypeScript 项目引用增量检查
+pnpm test           # Vitest
+pnpm test:coverage  # 测试及覆盖率门禁
+pnpm build          # 构建全部 workspace
+pnpm python:sync    # 用 uv 同步训练工具环境
+```
 
-点开局界面的 **🌐 创建联机房间** 生成一个房间码（可「复制邀请链接」分享），其他玩家用 **🔗 加入房间** 输入房间码即可入座；房主（第一个进房的人）点「开始游戏」发牌。
+## 在线联机
 
-- **服务器权威**：每一步都在服务端用引擎校验（座位即所有权），每个客户端只收到对自己**脱敏**后的状态（看不到牌堆顺序与对手预留牌）。
-- **断线重连**：身份用本地 token 绑定座位，刷新 / 掉线后用同一浏览器重连即可复位座位与隐藏预留卡。
-- **超时代打**：某玩家超过 **3 分钟**未行动，房主的「研究级 AI」会仅凭公共信息接管该回合，避免卡局。
+主页先选择「联机房间」或「单机房间」。创建联机房间后分享房间码或邀请链接，房主等待玩家入座后开始游戏。
 
-联机依赖仓库内的 Node.js 房间服务器（见下「部署」），纯静态托管只能进行单机热座 + AI，无法联机。
-
-## 玩法要点
-
-- **6 种精灵球**：精灵球(红)、超级球(蓝)、高级球(黑)、治愈球(粉)、先机球(黄)，以及 **大师球(紫)**——万能球。
-- **每回合三选一**：① 领取 3 个不同色；② 领取 2 个同色（该色 ≥4 时）；③ 预留 1 张普通宝可梦并获得 1 个大师球（预留区上限 3 张）。
-- **捕捉**：支付卡面左下角成本（已捕捉宝可梦右上角的球是永久折扣）。**稀有 / 传说**必须使用大师球，且各提供 2 个折扣。
-- **进化（回合结束，非行动）**：若已捕捉宝可梦的进化形出现在场上或你的预留区中，且你**已捕捉宝可梦提供的折扣球（卡面右上角）**满足卡面顶部的进化花费，即可进化——**只看折扣球，不消耗你持有的精灵球**。用进化形替换原卡，原卡移到训练板下方（不再计分/折扣）。每回合至多 1 次。
-- **精灵球上限 10**；某玩家达 **18 分**后本轮结束，分高者胜（平局比进化数，再比场上宝可梦数）。
-
-## 可选扩展
-
-开局界面勾选即可启用（可组合）：
-
-- **超级进化（Megas）**：第 4 级 Mega 卡 + Mega 代币。胜利改为需 **20 分 + 集齐每色 + 至少 1 只 Mega**。
-- **Pokémart 商店**：商店卡带交互效果（药水双效奖励 / 进化石关联 / 图鉴抵款 / 神奇糖果·技能机免费取卡 / 驱虫弃购）。
+- 服务端校验所有动作，并仅向玩家下发其有权查看的状态。
+- 房间身份保存在当前浏览器标签页的 `sessionStorage`；刷新可恢复座位，同时两个标签页可作为两名独立玩家加入。
+- 超时 AI 接管默认关闭，可由房主在创建/开始房间时启用并设置时间。
+- 房间快照原子写入磁盘，重启应用容器后仍可恢复。
 
 ## 项目结构
 
-```
-index.html          入口
-css/style.css       样式（含 CSS 绘制的精灵球 / 动画 / 联机大厅）
-js/engine.js        纯逻辑游戏引擎（规则 / 进化 / 计分 / 脱敏 / 合法动作），浏览器与 Node 通用
-js/ai.js            电脑对手（评估函数 + 进化感知的一层搜索；SPSA 自动调参权重）
-js/vsearch.js       「究极」难度：基于启发式先验的去随机化 MCTS（仅 2 人）
-js/cards.js         卡牌数据库（自动生成，勿手改）
-js/megas.js         超级进化扩展 · js/pokemart.js  Pokémart 商店扩展
-js/net.js           联机客户端传输（WebSocket + 心跳 + 服务端 token 重连）
-js/room.js          联机房间权威（纯逻辑、服务端权威、可 headless 单测）
-js/tutorial.js      零基础新手教程（引导式）
-js/ui.js            界面与交互
-server/             Node.js WebSocket 服务 + 原子文件房间存储
-data/cards.json     卡牌数据库（供 Node 测试）· data/megas.json · data/pokemart.json
-assets/cards/       100 张卡面 + 牌背（+ Pokémart pm_01..30）
-manifest.json sw.js PWA 清单与离线缓存
-test/               Node 单元测试（引擎 / AI / 扩展 / 联机房间）
-Dockerfile          Node.js 与 Caddy 两个生产镜像
-compose.yaml        单节点生产编排（TLS / 健康检查 / 数据卷 / 资源限制）
+```text
+apps/
+  web/              Vite 8 浏览器应用与静态资源
+  server/           Node.js 权威房间服务器
+packages/
+  game-core/        纯 TypeScript 游戏规则、AI 与房间领域逻辑
+  game-data/        卡牌数据及启动时结构校验
+  protocol/         客户端/服务端消息类型与运行时边界校验
+tools/
+  training/         uv 管理的 Python 研究与训练工具
+deploy/             Caddy、备份脚本与 systemd timer
 ```
 
-## 开发与测试
+前端继续使用原生 DOM 与 CSS；共享逻辑通过 workspace package 复用，不依赖浏览器全局变量。生产 TypeScript 开启 `strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes` 等严格选项，网络和持久化数据在不可信边界执行运行时校验。
 
-```bash
-node test/engine.test.js   # 引擎规则 + 100 局自走验证（含计分/进化/结束/筹码守恒/脱敏）
-node test/ai.test.js       # AI 强度（对贪心基线胜率）/ 终局 / 延迟
-node test/room.test.js     # 联机房间权威（座位/脱敏/重连/持久化/超时代打）
-node test/server.test.js   # 自托管服务器（建房/WebSocket/重启恢复）
-node test/megas.test.js    # 超级进化扩展
-node test/pokemart.test.js # Pokémart 商店扩展
-```
+## 玩法概要
+
+- 五种普通精灵球与万能的大师球。
+- 每回合可领取精灵球、捕捉宝可梦或预留卡牌。
+- 已捕捉宝可梦提供永久折扣；满足条件时可在回合结束进化。
+- 默认精灵球上限为 10；基础模式达到 18 分后在轮末结算。
+- 可选扩展包括超级进化与 Pokémart。
 
 ## 部署
 
-- **纯静态**（单机热座 + AI）：任意静态托管即可，双击 `index.html` 同款。
-- **含联机**：复制 `.env.example` 为 `.env`，填写域名后运行 `docker compose up -d --build`。Caddy 自动申请 HTTPS 证书并代理 WebSocket，Node.js 保存服务端权威房间快照。详见 [`docs/DEPLOY_ALIYUN.md`](docs/DEPLOY_ALIYUN.md)。
+项目提供两个最小生产镜像：Node.js 应用与 Caddy 静态站点/反向代理。可以只使用阿里云公网 IP，也可以配置域名并由 Caddy 自动启用 HTTPS。
 
-## 致谢
+```bash
+cp .env.example .env
+# 按 docs/DEPLOY_ALIYUN.md 填写公网 IP 或域名
+docker compose up -d --build
+```
 
-- 桌游《Splendor / 璀璨宝石》设计：Marc André。
-- 宝可梦改版美术：TTS 社区模组「璀璨宝石：宝可梦」。
-- 宝可梦相关名称与形象版权归 Nintendo / Game Freak / The Pokémon Company 所有。本项目为非商业同人学习用途。
+详见 [阿里云部署指南](docs/DEPLOY_ALIYUN.md) 与 [运维手册](docs/OPERATIONS.md)。
+
+## 致谢与版权
+
+桌游《Splendor / 璀璨宝石》由 Marc André 设计。卡牌美术与数值源自 TTS 社区模组「璀璨宝石：宝可梦」。宝可梦相关名称与形象版权归 Nintendo、Game Freak 与 The Pokémon Company 所有；本项目为非商业同人学习用途。
