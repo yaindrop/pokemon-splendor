@@ -24,6 +24,43 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
+const TOKEN_COUNT_KEYS = TOKEN_COLORS;
+const SUPPLY_KEYS = [...TOKEN_COLORS, 'megaToken'];
+const PLAYER_KEYS = [
+  'id',
+  'name',
+  'isAI',
+  'tokens',
+  'megaToken',
+  'board',
+  'buried',
+  'reserve',
+  'assoc',
+  'diff',
+];
+const GAME_STATE_KEYS = [
+  'seed',
+  'winScore',
+  'numPlayers',
+  'supply',
+  'decks',
+  'field',
+  'players',
+  'megasEnabled',
+  'megaOffer',
+  'pokemartEnabled',
+  'turn',
+  'round',
+  'phase',
+  'lastRound',
+  'finalTurnOf',
+  'winner',
+  'log',
+  'acted',
+  'taken',
+  'evolvedThisTurn',
+];
+
 function isInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value);
 }
@@ -53,13 +90,18 @@ function isColor(value: unknown): value is Color {
 }
 
 function isTokenCounts(value: unknown): boolean {
-  return isRecord(value) && TOKEN_COLORS.every((color) => isNonNegativeInteger(value[color]));
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, TOKEN_COUNT_KEYS) &&
+    TOKEN_COLORS.every((color) => isNonNegativeInteger(value[color]))
+  );
 }
 
 function isSupply(value: unknown): boolean {
   return (
-    isTokenCounts(value) &&
     isRecord(value) &&
+    hasOnlyKeys(value, SUPPLY_KEYS) &&
+    TOKEN_COLORS.every((color) => isNonNegativeInteger(value[color])) &&
     (value['megaToken'] === undefined || isNonNegativeInteger(value['megaToken']))
   );
 }
@@ -80,6 +122,7 @@ function isHiddenReserve(value: unknown): boolean {
 function isPlayer(value: unknown): boolean {
   if (!isRecord(value)) return false;
   return (
+    hasOnlyKeys(value, PLAYER_KEYS) &&
     isNonNegativeInteger(value['id']) &&
     typeof value['name'] === 'string' &&
     typeof value['isAI'] === 'boolean' &&
@@ -108,6 +151,7 @@ function isDecks(value: unknown, redacted: boolean): boolean {
   const validDeck = (deck: unknown): boolean =>
     Array.isArray(deck) && deck.every((item) => (redacted ? item === null : isCardIdOrNull(item)));
   return (
+    hasOnlyKeys(value, [...FIELD_TIERS, ...POKEMART_TIERS]) &&
     FIELD_TIERS.every((tier) => validDeck(value[tier])) &&
     POKEMART_TIERS.every((tier) => value[tier] === undefined || validDeck(value[tier]))
   );
@@ -118,6 +162,7 @@ function isField(value: unknown): boolean {
   const validCards = (cards: unknown): boolean =>
     Array.isArray(cards) && cards.every(isCardIdOrNull);
   return (
+    hasOnlyKeys(value, [...FIELD_TIERS, ...POKEMART_TIERS]) &&
     FIELD_TIERS.every((tier) => validCards(value[tier])) &&
     POKEMART_TIERS.every((tier) => value[tier] === undefined || validCards(value[tier]))
   );
@@ -132,6 +177,7 @@ function isGameStateShape(
   const playerCount = value['numPlayers'];
   const players = value['players'];
   return (
+    hasOnlyKeys(value, redacted ? [...GAME_STATE_KEYS, 'viewerId'] : GAME_STATE_KEYS) &&
     isInteger(value['seed']) &&
     isNonNegativeInteger(value['winScore']) &&
     isInteger(playerCount) &&
@@ -180,6 +226,7 @@ function isSnapshotSeat(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const token = value['token'];
   return (
+    hasOnlyKeys(value, ['token', 'name', 'connId', 'connected']) &&
     (token === null || (typeof token === 'string' && /^[a-f0-9]{64}$/.test(token))) &&
     typeof value['name'] === 'string' &&
     value['connId'] === null &&
@@ -193,6 +240,15 @@ export function isRoomSnapshot(value: unknown): value is RoomSnapshot {
   const history = value['undoHistory'];
   const seats = value['seats'];
   return (
+    hasOnlyKeys(value, [
+      'seq',
+      'started',
+      'seats',
+      'turnStartedAt',
+      'turnTimeoutMs',
+      'g',
+      'undoHistory',
+    ]) &&
     isNonNegativeInteger(value['seq']) &&
     typeof value['started'] === 'boolean' &&
     Array.isArray(seats) &&
@@ -215,6 +271,7 @@ function isRosterPlayers(value: unknown): boolean {
     value.every(
       (player) =>
         isRecord(player) &&
+        hasOnlyKeys(player, ['seat', 'name', 'connected']) &&
         isNonNegativeInteger(player['seat']) &&
         typeof player['name'] === 'string' &&
         typeof player['connected'] === 'boolean',
@@ -233,6 +290,7 @@ export function isServerMessage(message: unknown): message is RoomServerMessage 
       return hasOnlyKeys(message, ['t']);
     case 'welcome':
       return (
+        hasOnlyKeys(message, ['t', 'connId', 'seat', 'host', 'token']) &&
         typeof message['connId'] === 'string' &&
         isInteger(message['seat']) &&
         typeof message['host'] === 'boolean' &&
@@ -240,34 +298,50 @@ export function isServerMessage(message: unknown): message is RoomServerMessage 
       );
     case 'roster':
       return (
+        hasOnlyKeys(message, ['t', 'players', 'hostSeat', 'started']) &&
         isRosterPlayers(message['players']) &&
         isNonNegativeInteger(message['hostSeat']) &&
         typeof message['started'] === 'boolean'
       );
     case 'state':
       return (
+        hasOnlyKeys(message, [
+          't',
+          'seq',
+          'state',
+          'turnStartedAt',
+          'serverNow',
+          'turnTimeoutMs',
+          'undoAvailable',
+        ]) &&
         isNonNegativeInteger(message['seq']) &&
         isRedactedGameState(message['state']) &&
         isNonNegativeInteger(message['turnStartedAt']) &&
         isNonNegativeInteger(message['serverNow']) &&
-        (message['turnTimeoutMs'] === null || isNonNegativeInteger(message['turnTimeoutMs'])) &&
+        (message['turnTimeoutMs'] === null || Room.isTurnTimeoutMs(message['turnTimeoutMs'])) &&
         typeof message['undoAvailable'] === 'boolean'
       );
     case 'reject':
       return (
+        hasOnlyKeys(message, ['t', 'reason', 'seq']) &&
         typeof message['reason'] === 'string' &&
         (message['seq'] === undefined || isNonNegativeInteger(message['seq']))
       );
     case 'over':
-      return isNullableInteger(message['winner']);
+      return hasOnlyKeys(message, ['t', 'winner']) && isNullableInteger(message['winner']);
     case 'undo-vote':
       return (
+        hasOnlyKeys(message, ['t', 'requesterSeat', 'approvals', 'total']) &&
         isNonNegativeInteger(message['requesterSeat']) &&
         isIntegerArray(message['approvals']) &&
         isNonNegativeInteger(message['total'])
       );
     case 'undo-result':
-      return typeof message['accepted'] === 'boolean' && typeof message['reason'] === 'string';
+      return (
+        hasOnlyKeys(message, ['t', 'accepted', 'reason']) &&
+        typeof message['accepted'] === 'boolean' &&
+        typeof message['reason'] === 'string'
+      );
     default:
       return false;
   }
@@ -321,6 +395,7 @@ function isLog(value: unknown): boolean {
     value.every((entry) => {
       if (!isRecord(entry)) return false;
       return (
+        hasOnlyKeys(entry, ['turn', 'round', 'msg', 'kind', 'cardId', 'colors', 'pay']) &&
         isNonNegativeInteger(entry['turn']) &&
         isNonNegativeInteger(entry['round']) &&
         typeof entry['msg'] === 'string' &&

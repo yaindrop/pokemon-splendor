@@ -73,13 +73,23 @@ test('server protocol validates state and control message variants', () => {
     { t: 'undo-result', accepted: false, reason: '被拒绝' },
   ];
   for (const message of validMessages) assert.equal(isServerMessage(message), true);
+  for (const message of validMessages) {
+    assert.equal(isServerMessage({ ...message, unexpected: true }), false);
+  }
 
   const invalidMessages: readonly unknown[] = [
     null,
     { t: 'pong', extra: true },
     { t: 'welcome', connId: 1, seat: 0, host: true, token: null },
     { t: 'roster', players: [{ seat: -1, name: 'x', connected: true }], hostSeat: 0 },
+    {
+      t: 'roster',
+      players: [{ seat: 0, name: 'x', connected: true, unexpected: true }],
+      hostSeat: 0,
+      started: false,
+    },
     { t: 'state', seq: 1, state: { ...state, phase: 'invalid' } },
+    { ...stateMessage, turnTimeoutMs: 1 },
     {
       ...stateMessage,
       state: { ...state, decks: { ...state.decks, stage1: ['s1_01'] } },
@@ -107,6 +117,15 @@ test('persisted game snapshots require visible reserves and complete state field
   assert.equal(isGameStateSnapshot({ ...snapshot, decks: {} }), false);
   assert.equal(isGameStateSnapshot({ ...snapshot, field: {} }), false);
   assert.equal(isGameStateSnapshot({ ...snapshot, supply: { red: -1 } }), false);
+  assert.equal(isGameStateSnapshot({ ...snapshot, unexpected: true }), false);
+  assert.equal(
+    isGameStateSnapshot({ ...snapshot, players: [{ ...snapshot.players[0], unexpected: true }] }),
+    false,
+  );
+  assert.equal(
+    isGameStateSnapshot({ ...snapshot, supply: { ...snapshot.supply, unexpected: 1 } }),
+    false,
+  );
   const redacted = Engine.redactFor(game, 1);
   redacted.players[0]?.reserve.push({ hidden: true, tier: 'stage1' });
   assert.equal(isGameStateSnapshot(redacted), false);
@@ -127,4 +146,5 @@ test('room snapshots deeply validate seats, games, and undo history', () => {
   assert.equal(isRoomSnapshot({ ...room, undoHistory: [{}] }), false);
   assert.equal(isRoomSnapshot({ ...room, turnTimeoutMs: 1 }), false);
   assert.equal(isRoomSnapshot({ ...room, started: true }), false);
+  assert.equal(isRoomSnapshot({ ...room, unexpected: true }), false);
 });
