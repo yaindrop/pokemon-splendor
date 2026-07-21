@@ -13,6 +13,7 @@ export interface RoomEnvelope {
 }
 
 export interface RoomStore {
+  ready(): Promise<void>;
   load(code: string): Promise<RoomEnvelope | null>;
   save(code: string, snapshot: RoomEnvelope): Promise<void>;
   delete(code: string): Promise<void>;
@@ -52,6 +53,10 @@ export class FileRoomStore implements RoomStore {
   async #init(): Promise<void> {
     this.#ready ??= mkdir(this.#directory, { recursive: true, mode: 0o700 });
     await this.#ready;
+  }
+
+  async ready(): Promise<void> {
+    await this.#init();
   }
 
   #path(code: string): string {

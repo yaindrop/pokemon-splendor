@@ -7,7 +7,7 @@ import type { RoomServerMessage } from '@pokemon-splendor/game-core';
 import { isServerMessage } from '@pokemon-splendor/protocol';
 import { test } from 'vitest';
 import WebSocket, { type RawData } from 'ws';
-import { FileRoomStore, type RoomEnvelope } from '../src/file-room-store.js';
+import { FileRoomStore, type RoomEnvelope, type RoomStore } from '../src/file-room-store.js';
 import { createRoomServer, normalizeName, validMessage } from '../src/room-server.js';
 
 async function withTempDir<T>(fn: (directory: string) => Promise<T>): Promise<T> {
@@ -103,6 +103,7 @@ test('player names are bounded and cannot carry HTML markup', () => {
 test('FileRoomStore persists, reloads, and deletes a room snapshot', async () => {
   await withTempDir(async (dir) => {
     const store = new FileRoomStore(dir);
+    await store.ready();
     const snapshot: RoomEnvelope = {
       version: 1,
       createdAt: 1000,
@@ -134,6 +135,18 @@ test('FileRoomStore persists, reloads, and deletes a room snapshot', async () =>
   });
 });
 
+test('RoomServer does not listen before room storage is ready', async () => {
+  const unavailableStore: RoomStore = {
+    ready: () => Promise.reject(new Error('room storage unavailable')),
+    load: () => Promise.resolve(null),
+    save: () => Promise.resolve(),
+    delete: () => Promise.resolve(),
+    listExpired: () => Promise.resolve([]),
+  };
+  const app = createRoomServer({ store: unavailableStore, host: '127.0.0.1', port: 0 });
+  await assert.rejects(app.listen(), /room storage unavailable/);
+});
+
 test('RoomServer creates rooms and hosts an authoritative WebSocket game', async () => {
   await withTempDir(async (dir) => {
     const app = createRoomServer({ dataDir: dir, host: '127.0.0.1', port: 0 });
@@ -142,6 +155,8 @@ test('RoomServer creates rooms and hosts an authoritative WebSocket game', async
       const base = `http://127.0.0.1:${app.address().port}`;
       const health = await fetch(base + '/healthz');
       assert.strictEqual(health.status, 200);
+      const ready = await fetch(base + '/readyz');
+      assert.strictEqual(ready.status, 200);
 
       const crossSite = await fetch(base + '/api/rooms', {
         method: 'POST',

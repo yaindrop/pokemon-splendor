@@ -490,14 +490,16 @@ export function createRoomServer(options: RoomServerOptions = {}): RoomServer {
   });
 
   return {
-    listen: () =>
-      new Promise<void>((resolve, reject) => {
+    listen: async () => {
+      await store.ready();
+      await new Promise<void>((resolve, reject) => {
         server.once('error', reject);
         server.listen(port, host, () => {
           server.off('error', reject);
           resolve();
         });
-      }),
+      });
+    },
     address: () => {
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('server is not listening');
