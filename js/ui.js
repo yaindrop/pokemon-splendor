@@ -63,7 +63,6 @@
   })[ch]);
   const BALL_NAMES = { red: '精灵球', blue: '超级球', black: '高级球', pink: '治愈球', yellow: '先机球', purple: '大师球' };
   const TIER_NAMES = { legend: '传说', rare: '稀有', stage3: '三阶', stage2: '二阶', stage1: '一阶', mega: 'Mega', pmL1: '商店Ⅰ', pmL2: '商店Ⅱ', pmL3: '商店Ⅲ' };
-  const EFFECT_NAMES = { copy: '进化石·关联', colorless_master: '图鉴·可抵2万能', double: '药水·双奖励', copy_free: '神奇糖果·关联+免费取卡', free: '技能机·免费取卡', discard_buy: '驱虫·弃2张同色购买' };
   const SEAT_COLORS = ['#e3350d', '#2f6fd6', '#46d17a', '#f4c025'];
   // per-seat trainer avatars (head/bust crops of the TTS trainer figurines)
   const SEAT_AVATARS = ['ash', 'misty', 'brock', 'rocket'];
@@ -212,6 +211,8 @@
   function onNetState(m) {
     if (!m || !m.state || !UI.net) return;
     const st = m.state;
+    const tokenMoves = UI.net.started ? captureNetworkTokenMoves(G, st) : [];
+    const cardMoves = UI.net.started ? captureNetworkCardMoves(G, st) : [];
     st.cardDB = DB; st.byId = byId; st.megaDB = MEGA_DB; st.pokemartDB = POKEMART_DB; // reattach static refs
     if (!Array.isArray(st.log)) st.log = [];
     G = st; gameEpoch++;
@@ -226,6 +227,8 @@
     $('#game').classList.remove('hidden');
     recomputeOnlinePhase();
     render();
+    playNetworkTokenMoves(tokenMoves);
+    playNetworkCardMoves(cardMoves);
     if (UI.net.turnTimeoutMs) startIdleTimer(); else stopIdleTimer();
     if (G.phase === 'gameover') showWin();
   }
@@ -342,22 +345,21 @@
   const ball = (color, cls, label) =>
     `<div class="ball ${color} ${cls || ''}" title="${BALL_NAMES[color]}">${label != null ? '' : ''}</div>`;
 
-  // opts.aff: null | { master } from affordInfo(). master>0 => needs Master Balls
-  // (purple tier + a 大师×N count badge — colour-blind-safe redundant cue).
+  // opts.aff: null | { master } from affordInfo(). master>0 still gets a
+  // distinct affordable outline; the exact Master Ball cost belongs in the
+  // transaction dock, not on top of the card art.
   function cardHTML(id, opts) {
     opts = opts || {};
     const c = byId[id];
     if (!c) return `<div class="card"><div class="empty-slot">—</div></div>`;
     const aff = opts.aff;
-    let cls = '', badge = '';
+    let cls = '';
     if (aff) {
       cls = aff.master > 0 ? ' affordable affordable-wild' : ' affordable';
-      if (aff.master > 0) badge = `<div class="wild-badge" title="买这张会花费 ${aff.master} 个大师球（万能球）">大师×${aff.master}</div>`;
     }
     const sel = (UI.selCard === id) ? ' selected' : '';
-    const reserveMini = opts.canReserve ? `<div class="reserve-mini" data-reserve-card="${id}">＋保留</div>` : '';
     return `<div class="card${cls}${sel}" data-card="${id}" data-zoom="${c.img}">
-              <img src="${c.img}" alt="${c.name}" loading="lazy">${reserveMini}${badge}
+              <img src="${c.img}" alt="${c.name}" loading="lazy">
             </div>`;
   }
 
@@ -366,29 +368,23 @@
     renderBanner(); renderField(); renderSupply(); renderActionBar(); renderPlayers(); renderLog();
     updateUndoBtn();   // keep 悔棋 button consistent with phase/turn on every state change
     evalRotateHint();  // show/hide the portrait "rotate" hint
-    syncDockH();       // keep mobile bottom-dock clearance in sync with its current height
     if (G && G.phase === 'gameover') clearSave();   // finished game → nothing to resume
     if (window.Tutorial && Tutorial.onRender) { try { Tutorial.onRender(G, UI); } catch (e) { } } // drive the tutorial coach
   }
 
   function renderBanner() {
     const p = isOnline() ? G.players[G.turn] : me();
-    const banner = $('#turn-banner');
-    let state = 'turn-wait', icon = '◈', kicker = '对手回合', main, sub = '牌桌会在对方行动后自动同步';
+    let state = 'turn-wait';
     if (G.phase === 'gameover') {
-      state = 'turn-over'; icon = '★'; kicker = '对局结束'; main = '胜负已定'; sub = '查看最终得分与宝可梦阵容';
+      state = 'turn-over';
     } else if (p.isAI) {
-      state = 'turn-ai'; icon = '✦'; kicker = '电脑回合'; main = `${escapeHTML(p.name)} 正在思考`; sub = '<span class="thinking">计算行动<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+      state = 'turn-ai';
     } else if (isOnline() && myTurn()) {
-      state = 'turn-mine'; icon = '⚡'; kicker = '你的回合'; main = '轮到你了，请选择行动'; sub = '拿取精灵球 · 捕捉宝可梦 · 保留卡牌';
-    } else if (isOnline()) {
-      main = `${escapeHTML(p.name)} 正在行动`;
-    } else {
-      state = 'turn-mine'; icon = '⚡'; kicker = '训练家回合'; main = `${escapeHTML(p.name)}，请选择行动`; sub = '拿取精灵球 · 捕捉宝可梦 · 保留卡牌';
+      state = 'turn-mine';
+    } else if (!isOnline()) {
+      state = 'turn-mine';
     }
-    banner.className = 'turn-banner';
     $('#topbar').className = state;
-    banner.innerHTML = `<span class="turn-beacon" aria-hidden="true">${icon}</span><span class="turn-copy"><span class="turn-kicker">${kicker}</span><strong>${main}</strong><small>${sub}</small></span>${G.lastRound && G.phase === 'play' ? '<span class="last-round">最后一轮</span>' : ''}`;
   }
 
   function renderField() {
@@ -483,99 +479,87 @@
   }
   const captureAffordable = (card) => !!affordInfo(card);
 
-  // --- purchase ledger: an at-a-glance payment breakdown shown when a card is
-  // selected. Per colour it shows 需(required) · 抵(covered free by bonuses, no
-  // ball spent) · 交(balls handed back to the supply), how many 大师球 (Master /
-  // wildcard) fill the shortfall, then an aggregate "你交出" strip of the exact
-  // balls leaving your stash. Colour-blind safe: every state carries a symbol
-  // (斜线=抵扣 / 实心=交出 / ★=大师) + numerals, never colour alone (WCAG 1.4.1).
-  // Derives the same split as E.paymentBreakdown but also renders a preview when
-  // the card isn't affordable yet. `info` = affordInfo(card) result (or null).
+  // Compact capture trade. Each printed colour becomes one round token:
+  // lower-left = printed/discounted, lower-right = balance after the trade,
+  // upper-right = real Master Balls substituted for this colour.
   function purchaseLedgerHTML(card, info) {
-    // Repel (discard_buy) is bought by discarding cards, not balls → no ball ledger.
+    // Repel (discard_buy) is captured by discarding cards, not balls.
     if (E.isPokemart(card) && card.effect === 'discard_buy') return '';
     const p = me();
     const b = E.bonuses(G, p);
-    const rows = [];
-    let wildNeed = 0;
+    const virtual = info && info.pokedex ? info.pokedex * 2 : 0;
+    const mandatory = card.cost.purple || 0;
+    let virtualLeft = virtual;
+    let realMasterLeft = p.tokens.purple;
+    let realMasterSpent = 0;
+    const tokens = [];
+
+    const coverWithMaster = (amount) => {
+      const virtualUsed = Math.min(amount, virtualLeft);
+      virtualLeft -= virtualUsed;
+      amount -= virtualUsed;
+      const realUsed = Math.min(amount, realMasterLeft);
+      realMasterLeft -= realUsed;
+      realMasterSpent += realUsed;
+      return { realUsed, uncovered: amount - realUsed };
+    };
+
+    const mandatoryCover = coverWithMaster(mandatory);
+
     for (const c of E.COLORS) {
       const required = card.cost[c] || 0;
       if (!required) continue;
-      const bonusCovered = Math.min(required, b[c]);
-      const remaining = required - bonusCovered;
-      const paidColor = Math.min(remaining, p.tokens[c]);
-      rows.push({ color: c, required, bonusCovered, paidColor, paidWild: remaining - paidColor });
-      wildNeed += remaining - paidColor;
+      const due = Math.max(0, required - b[c]);
+      const paidColor = Math.min(due, p.tokens[c]);
+      const master = coverWithMaster(due - paidColor);
+      const uncovered = master.uncovered;
+      const after = p.tokens[c] - paidColor - uncovered;
+      tokens.push({ color: c, required, due, after, paidWild: master.realUsed });
     }
-    const mandatory = card.cost.purple || 0;                 // rare/legend printed Master
-    const virtual = info && info.pokedex ? info.pokedex * 2 : 0; // wildcard from discarding 图鉴
-    const masterNeed = wildNeed + mandatory;
-    const masterFromStash = Math.max(0, masterNeed - virtual);
-    const affordable = !!info;
-    const masterShort = Math.max(0, masterNeed - p.tokens.purple - virtual);
-    if (!rows.length && !mandatory) return ''; // no ball cost at all
+    if (!tokens.length && !mandatory) return '';
 
-    const pip = (extra) => `<span class="pip ball ${extra}"></span>`;
-    let rowsHtml = '';
-    for (const r of rows) {
-      let pips = '';
-      for (let i = 0; i < r.bonusCovered; i++) pips += pip(r.color + ' pip-bonus');
-      for (let i = 0; i < r.paidColor; i++) pips += pip(r.color + ' pip-paid');
-      for (let i = 0; i < r.paidWild; i++) pips += pip('purple pip-wild');
-      const disc = r.bonusCovered ? ` <span class="pl-disc">−抵${r.bonusCovered}</span>` : '';
-      const wild = r.paidWild ? ` <span class="pl-wild">(${r.paidWild}★)</span>` : '';
-      rowsHtml += `<div class="pl-row">
-          <span class="pl-name"><span class="ball ${r.color} xs"></span>${BALL_NAMES[r.color]}</span>
-          <span class="pl-pips">${pips}</span>
-          <span class="pl-calc">需${r.required}${disc} = 交<b class="pl-pay">${r.paidColor + r.paidWild}</b>${wild}</span>
-        </div>`;
-    }
     if (mandatory) {
-      let pips = '';
-      for (let i = 0; i < mandatory; i++) pips += pip('purple pip-wild');
-      rowsHtml += `<div class="pl-row">
-          <span class="pl-name"><span class="ball purple xs"></span>大师球·必需</span>
-          <span class="pl-pips">${pips}</span>
-          <span class="pl-calc">需${mandatory} = 交<b class="pl-pay">${mandatory}</b></span>
+      tokens.push({
+        color: 'purple', required: mandatory, due: mandatory,
+        after: p.tokens.purple - realMasterSpent - mandatoryCover.uncovered,
+        paidWild: mandatoryCover.realUsed,
+      });
+    }
+
+    const tokenHTML = (r) => {
+      const name = BALL_NAMES[r.color];
+      const neg = r.after < 0;
+      const assist = r.paidWild ? `<span class="pay-token-master">★${r.paidWild}</span>` : '';
+      return `<div class="pay-token ${r.color}${neg ? ' negative' : ''}" aria-label="${name}，原需 ${r.required}，折后 ${r.due}，交易后剩余 ${r.after}${r.paidWild ? `，使用 ${r.paidWild} 个大师球` : ''}">
+          <span class="pay-token-art"><span class="ball ${r.color}"></span></span>
+          <span class="pay-metric pay-cost"><b>${r.required}</b><i>/</i><b>${r.due}</b></span>
+          <span class="pay-metric pay-after${neg ? ' negative' : ''}"><small>余</small><b>${r.after}</b></span>
+          ${assist}<span class="pay-token-tooltip">${name}</span>
         </div>`;
-    }
+    };
 
-    let hoChips = '';
-    for (const r of rows) if (r.paidColor) hoChips += `<span class="ho-chip"><span class="ball ${r.color} sm"></span>×${r.paidColor}</span>`;
-    if (masterFromStash) hoChips += `<span class="ho-chip ho-master"><span class="ball purple sm"></span>★×${masterFromStash}</span>`;
-
-    let body;
-    if (!affordable) {
-      body = `<div class="pl-short">⚠ 还差 <b>${masterShort}</b> 个球才能购买（大师球可抵任意颜色）</div>`;
-    } else if (!hoChips) {
-      body = `<div class="pl-free">✓ 免费！奖励已全额抵扣，无需交出任何球</div>`;
-    } else {
-      const vNote = virtual ? `<span class="pl-vnote">（含弃置图鉴抵充 ${virtual}）</span>` : '';
-      body = `<div class="handover"><span class="ho-label">你交出</span>${hoChips}<span class="ho-arrow">→ 供应区</span>${vNote}</div>`;
-    }
-
-    const legend = rows.some(r => r.bonusCovered || r.paidWild)
-      ? `<div class="pl-legend"><span class="lg lg-bonus"></span>奖励抵扣·免交 <span class="lg lg-paid"></span>交出该色球 <span class="lg lg-wild"></span>大师球抵充</div>`
-      : '';
-
-    return `<div class="pay-ledger${affordable ? '' : ' unafford'}">${rowsHtml}${legend}${body}</div>`;
+    return `<div class="pay-ledger${info ? '' : ' unafford'}"><div class="pay-token-list">${tokens.map(tokenHTML).join('')}</div></div>`;
   }
 
   function renderSupply() {
     const counts = {}; UI.pick.forEach(c => counts[c] = (counts[c] || 0) + 1);
     const human = (isOnline() ? myTurn() : isHuman(G.turn)) && G.phase === 'play' && UI.phase === 'main' && !G.acted;
     const quickActions = UI.pick.length
-      ? `<span class="supply-quick-actions"><button type="button" class="supply-confirm" data-supply-confirm aria-label="确认拿取" title="确认拿取" ${takeSelectionComplete() ? '' : 'disabled'}>✓</button><button type="button" class="supply-cancel" data-supply-clear aria-label="取消选择" title="取消选择">×</button></span>`
-      : `<small>${human ? '左键选 · 右键还' : '当前库存'}</small>`;
-    let html = `<div class="panel-title"><span>精灵球补给</span>${quickActions}</div>`;
+      ? `<span class="supply-quick-actions"><button type="button" class="supply-cancel" data-supply-clear aria-label="取消选择" title="取消选择">×</button><button type="button" class="supply-confirm" data-supply-confirm aria-label="确认领取" title="确认领取" ${takeSelectionComplete() ? '' : 'disabled'}>✓</button></span>`
+      : human
+        ? '<span class="supply-control-hints" aria-label="左键领取，右键归还"><span><i class="mouse-key mouse-left" aria-hidden="true"></i>领取</span><span><i class="mouse-key mouse-right" aria-hidden="true"></i>归还</span></span>'
+        : '<small>当前库存</small>';
+    let html = `<div class="panel-title"><span>领取精灵球</span>${quickActions}</div>`;
     for (const color of E.ALL_TOKENS) {
       const isMaster = color === 'purple';
       const pick = counts[color] || 0;
       const selectable = human && !isMaster && canAddBall(color);
       const dis = (!human || isMaster || (!selectable && !pick)) ? ' disabled' : '';
+      const stack = Array.from({ length: Math.min(3, Math.max(0, G.supply[color] - 1)) }, () => `<span class="supply-disc supply-stack-token"><span class="ball ${color}"></span></span>`).join('');
       html += `<button type="button" class="supply-row${pick ? ' picked' : ''}${dis}" data-supply-color="${color}" ${(!isMaster) ? `data-color="${color}"` : ''} ${(!selectable && !pick) ? 'disabled' : ''} aria-label="${BALL_NAMES[color]}，库存 ${G.supply[color]}${pick ? `，已选 ${pick}` : ''}">
-                 ${ball(color, '')}
-                 <span class="supply-tooltip" role="tooltip">${BALL_NAMES[color]}${pick ? ' · 右键放回' : ''}</span>
+                 <span class="supply-stack" aria-hidden="true">${stack}</span>
+                 <span class="supply-disc supply-main-disc">${ball(color, '')}</span>
+                 <span class="supply-tooltip" role="tooltip">${BALL_NAMES[color]}${pick ? ' · 右键归还' : ''}</span>
                  ${pick ? `<span class="picked-n">✓ ${pick}</span>` : ''}
                  <span class="cnt">${G.supply[color]}</span>
                </button>`;
@@ -584,7 +568,7 @@
       const canTake = human && me().megaToken < 1 && G.supply.megaToken > 0;
       const held = me().megaToken;
       html += `<button type="button" class="supply-row mega-row${canTake ? '' : ' disabled'}" data-supply-color="mega" ${canTake ? 'data-take-mega="1"' : 'disabled'} aria-label="Mega 代币，库存 ${G.supply.megaToken}；花费整个回合获得 1 个">
-                 <div class="ball mega-token"></div>
+                 <span class="supply-disc supply-main-disc"><span class="ball mega-token"></span></span>
                  <span class="supply-tooltip" role="tooltip">Mega 代币${held ? '（已持有）' : ''}</span>
                  <span class="cnt">${G.supply.megaToken}</span>
                </button>`;
@@ -615,10 +599,48 @@
     return distinct.size === UI.pick.length && UI.pick.length === Math.min(3, available);
   }
 
+  function captureBlockedReason(card) {
+    const p = me();
+    if (E.isPokemart(card) && card.effect === 'discard_buy') {
+      const color = card.effectParam.discardColor;
+      const need = card.effectParam.discardCount;
+      const owned = p.board.filter(id => E.effBonusColor(G, p, id) === color).length;
+      return `需要弃掉 ${need} 张${BALL_NAMES[color]}奖励卡，当前只有 ${owned} 张`;
+    }
+    if (E.isPokemart(card) && (card.effect === 'copy' || card.effect === 'copy_free')
+      && !p.board.some(id => E.effBonusColor(G, p, id))) {
+      return '需要先捕捉至少一只带奖励颜色的宝可梦';
+    }
+    const bonuses = E.bonuses(G, p);
+    const deficits = E.COLORS.map(color => ({
+      color,
+      count: Math.max(0, (card.cost[color] || 0) - bonuses[color] - p.tokens[color]),
+    })).filter(item => item.count > 0);
+    const mandatory = card.cost.purple || 0;
+    const dex = p.board.filter(id => E.isPokemart(byId[id]) && byId[id].effect === 'colorless_master').length;
+    const availableMaster = p.tokens.purple + dex * 2;
+    const masterNeed = mandatory + deficits.reduce((sum, item) => sum + item.count, 0);
+    if (mandatory > availableMaster) return `需要 ${mandatory} 个大师球，当前可用 ${availableMaster} 个`;
+    if (masterNeed > availableMaster) {
+      const missing = deficits.map(item => `${item.count} 个${BALL_NAMES[item.color]}`).join('、');
+      return `缺少 ${missing}，大师球也不足以替代`;
+    }
+    return '当前不满足这张卡的捕捉条件';
+  }
+
+  function reserveBlockedReason(card, loc, player) {
+    if (loc.where === 'reserve') return '这只宝可梦已经在预留区';
+    if (!(loc.where === 'field' && (E.NORMAL_TIERS.includes(loc.tier) || E.PM_TIERS.includes(loc.tier)))) {
+      return `${TIER_NAMES[card.tier] || '这类'}宝可梦不能预留`;
+    }
+    if (player.reserve.length >= E.HAND_MAX) return `预留区已满（最多 ${E.HAND_MAX} 张）`;
+    return '当前不能预留这只宝可梦';
+  }
+
   function renderActionBar() {
     const bar = $('#action-bar');
     const idle = () => { bar.innerHTML = ''; bar.classList.add('action-idle'); };
-    bar.classList.remove('action-idle');
+    bar.classList.remove('action-idle', 'action-card');
     if (G.phase === 'gameover') { idle(); return; }
     const p = me();
     if (p.isAI) { idle(); return; }
@@ -627,8 +649,17 @@
     if (UI.phase === 'discard') {
       const over = E.tokenTotal(p) - E.TOKEN_MAX;
       let tray = E.ALL_TOKENS.filter(c => p.tokens[c] > 0)
-        .map(c => `<div class="ball ${c}" data-discard="${c}" title="归还${BALL_NAMES[c]}" style="cursor:pointer">${''}</div>`).join('');
-      bar.innerHTML = `<div class="act-hint">精灵球超过 10 个，请点击归还 <b>${over}</b> 个。</div><div class="tray">${tray}</div>`;
+        .map(c => `<button type="button" class="discard-token ${c}" data-discard="${c}" aria-label="归还一个${BALL_NAMES[c]}，当前持有 ${p.tokens[c]}">
+            <span class="discard-token-art">${ball(c, '')}</span>
+            <span class="discard-token-count">${p.tokens[c]}</span>
+            <span class="discard-token-minus">−1</span>
+            <span class="discard-token-tooltip">${BALL_NAMES[c]}</span>
+          </button>`).join('');
+      bar.innerHTML = `<div class="discard-head">
+          <span class="discard-mark" aria-hidden="true">↙</span>
+          <span class="discard-copy"><small>精灵球达到上限</small><strong>归还 ${over} 个</strong></span>
+          <span class="discard-total">${E.tokenTotal(p)}<small>/${E.TOKEN_MAX}</small></span>
+        </div><div class="discard-token-list">${tray}</div>`;
       return;
     }
     if (UI.phase === 'evolve') {
@@ -655,25 +686,27 @@
     // main phase
     if (UI.pick.length) { idle(); return; }
     if (UI.selCard) {
+      bar.classList.add('action-card');
       const c = byId[UI.selCard];
       const info = affordInfo(c);
       const aff = !!info;
       const loc = E.locateCard(G, UI.selCard);
       const reserveTier = (loc.where === 'field') && (E.NORMAL_TIERS.includes(loc.tier) || E.PM_TIERS.includes(loc.tier));
       const canReserve = reserveTier && p.reserve.length < E.HAND_MAX;
-      const eff = E.isPokemart(c) && c.effect ? ` · <span class="eff-tag">${EFFECT_NAMES[c.effect] || ''}</span>` : '';
       let ledger = purchaseLedgerHTML(c, info);
-      if (!ledger && !aff) ledger = `<div class="pay-ledger unafford"><div class="pl-short">⚠ 暂时无法购买</div></div>`;
-      let html = `<img class="sel-preview" src="${c.img}" alt="${c.name}"><div class="act-hint">已选：<b>${c.name}</b>（${TIER_NAMES[c.tier]}，${c.vp}分）${eff}<br><span style="font-size:12px;opacity:.75">点卡面可放大查看</span></div>${ledger}<div class="act-buttons">`;
-      if (aff) html += `<button class="primary" data-act="capture">捕捉</button>`;
-      if (canReserve) html += `<button class="ghost" data-act="reserve-card">保留</button>`;
-      html += `<button class="ghost" data-act="clear-sel">取消</button></div>`;
+      const captureReason = aff ? '' : captureBlockedReason(c);
+      const reserveReason = canReserve ? '' : reserveBlockedReason(c, loc, p);
+      let html = `${ledger}<div class="act-buttons capture-actions">
+        <span class="action-control${captureReason ? ' has-reason' : ''}" ${captureReason ? `data-tip="${escapeHTML(captureReason)}" tabindex="0" aria-label="无法捕捉：${escapeHTML(captureReason)}"` : ''}><button class="primary" data-act="capture" ${aff ? '' : 'disabled'}>捕捉</button></span>
+        <span class="action-control${reserveReason ? ' has-reason' : ''}" ${reserveReason ? `data-tip="${escapeHTML(reserveReason)}" tabindex="0" aria-label="无法预留：${escapeHTML(reserveReason)}"` : ''}><button class="reserve-action" data-act="reserve-card" ${canReserve ? '' : 'disabled'}><span aria-hidden="true">◇</span> 预留</button></span>
+        <span class="action-control"><button class="ghost" data-act="clear-sel">取消</button></span>
+      </div>`;
       bar.innerHTML = html;
       return;
     }
     if (UI.selDeck) {
-      bar.innerHTML = `<div class="act-hint">保留 <b>${TIER_NAMES[UI.selDeck]}</b> 牌堆顶（获得1个大师球）？</div>
-        <div class="act-buttons"><button class="primary" data-act="reserve-deck">保留牌堆顶</button><button class="ghost" data-act="clear-sel">取消</button></div>`;
+      bar.innerHTML = `<div class="act-hint">预留 <b>${TIER_NAMES[UI.selDeck]}</b> 牌堆顶的宝可梦（获得1个大师球）？</div>
+        <div class="act-buttons"><button class="reserve-action" data-act="reserve-deck"><span aria-hidden="true">◇</span> 预留牌堆顶</button><button class="ghost" data-act="clear-sel">取消</button></div>`;
       return;
     }
     idle();
@@ -697,14 +730,29 @@
       const b = E.bonuses(G, p);
       const tot = E.tokenTotal(p);                // total Poké Balls held (10 max at turn end)
       const active = (i === G.turn && G.phase === 'play');
-      const el = document.createElement('div');
-      el.className = 'player' + (active ? ' active' : '') + (p.isAI ? ' ai' : '');
-      // bonus + token chips
-      let chips = '';
-      for (const c of E.COLORS) {
-        chips += `<div class="chip">${ball(c, 'sm')}<span class="num">${p.tokens[c]}</span><span class="bonus-n">+${b[c]}</span></div>`;
+      const mine = isOnline() ? i === onlineSeat() : active && !p.isAI;
+      let turnStatus = '';
+      if (active) {
+        if (p.isAI) turnStatus = '思考中…';
+        else if (!mine && isOnline()) turnStatus = '正在行动';
+        else if (UI.phase === 'discard') turnStatus = '正在归还精灵球';
+        else if (UI.phase === 'evolve') turnStatus = '正在进化';
+        else if (UI.pick.length) turnStatus = '正在领取精灵球';
+        else if (UI.selDeck) turnStatus = '正在预留牌堆';
+        else if (UI.selCard) turnStatus = '正在处理宝可梦';
+        else if (G.acted) turnStatus = '正在结算回合';
+        else turnStatus = mine ? '你的回合' : '当前回合';
+        if (G.lastRound) turnStatus += ' · 最后一轮';
       }
-      chips += `<div class="chip">${ball('purple', 'sm')}<span class="num">${p.tokens.purple}</span></div>`;
+      const el = document.createElement('div');
+      el.className = 'player' + (active ? ' active' : '') + (mine ? ' mine' : '') + (p.isAI ? ' ai' : '');
+      el.dataset.player = i;
+      // bonus + token chips
+      let chips = `<div class="ptokens${tot > E.TOKEN_MAX ? ' over' : tot === E.TOKEN_MAX ? ' full' : ''}" title="持有的精灵球总数（回合结束上限 ${E.TOKEN_MAX} 个）" aria-label="共持有 ${tot} 个精灵球，上限 ${E.TOKEN_MAX} 个"><span class="pt-lbl">球</span><strong>${tot}</strong><small>/${E.TOKEN_MAX}</small></div>`;
+      for (const c of E.COLORS) {
+        chips += `<div class="trainer-token" data-token-color="${c}" title="${BALL_NAMES[c]}：持有 ${p.tokens[c]}，永久折扣 ${b[c]}" aria-label="${BALL_NAMES[c]}，持有 ${p.tokens[c]}，永久折扣 ${b[c]}">${ball(c, '')}<span class="trainer-token-count">${p.tokens[c]}</span><span class="trainer-token-bonus">+${b[c]}</span></div>`;
+      }
+      chips += `<div class="trainer-token" data-token-color="purple" title="${BALL_NAMES.purple}：持有 ${p.tokens.purple}" aria-label="${BALL_NAMES.purple}，持有 ${p.tokens.purple}">${ball('purple', '')}<span class="trainer-token-count">${p.tokens.purple}</span></div>`;
       // captured cards grouped by effective bonus color (Pokémart copy cards take
       // their associated colour; effect cards with no colour go in a final group).
       let stacks = '';
@@ -714,7 +762,7 @@
         if (!g.ids.length) continue;
         let st = '';
         g.ids.forEach((id, idx) => {
-          st += `<div class="mini-card${idx ? ' stacked' : ''}" data-zoom="${byId[id].img}"><img src="${byId[id].img}" alt=""></div>`;
+          st += `<div class="mini-card${idx ? ' stacked' : ''}" data-captured-card="${id}" data-zoom="${byId[id].img}"><img src="${byId[id].img}" alt=""></div>`;
         });
         stacks += `<div class="color-stack"><div class="ministack">${st}</div></div>`;
       }
@@ -723,28 +771,26 @@
       const revealReserve = !p.isAI && (isOnline() ? (i === onlineSeat()) : active);
       let rz = '';
       if (p.reserve.length) {
-        const cards = p.reserve.map(rid => {
+        const cards = p.reserve.map((rid, slot) => {
           const stub = (rid && typeof rid === 'object');
           const realId = stub ? null : rid;
           const tier = stub ? rid.tier : byId[realId].tier;
-          if (revealReserve && !stub) return `<div class="mini-card${UI.selCard === realId ? ' selected' : ''}" data-zoom="${byId[realId].img}" data-reserve-capture="${realId}"><img src="${byId[realId].img}"></div>`;
-          return `<div class="mini-card card-back" data-tier="${tier}"></div>`;
+          if (revealReserve && !stub) return `<div class="mini-card${UI.selCard === realId ? ' selected' : ''}" data-reserved-slot="${slot}" data-reserved-card="${realId}" data-zoom="${byId[realId].img}" data-reserve-capture="${realId}"><img src="${byId[realId].img}"></div>`;
+          return `<div class="mini-card card-back" data-reserved-slot="${slot}" data-tier="${tier}"></div>`;
         }).join('');
-        const hint = revealReserve ? '（点击可捕捉）' : '';
-        rz = `<div class="reserve-zone"><div class="rz-title">保留区 (${p.reserve.length})${hint}</div><div class="pcards">${cards}</div></div>`;
+        rz = `<div class="reserve-zone" data-reserve-zone><div class="rz-title">预留区 (${p.reserve.length})</div><div class="pcards">${cards}</div></div>`;
       }
       el.innerHTML =
         `<div class="player-head">
            <div class="pavatar" style="background-color:${SEAT_COLORS[i]};background-image:url(${seatAvatar(i)});box-shadow:0 0 0 2px ${SEAT_COLORS[i]}"></div>
-           <div class="pname">${escapeHTML(p.name)}</div>
-           <div class="ptokens${tot > E.TOKEN_MAX ? ' over' : tot === E.TOKEN_MAX ? ' full' : ''}" title="持有的精灵球总数（回合结束上限 ${E.TOKEN_MAX} 个）"><span class="pt-lbl">球</span>${tot}<small>/${E.TOKEN_MAX}</small></div>
+           <div class="player-heading"><div class="pname">${escapeHTML(p.name)}${mine ? '<span class="player-me">你</span>' : ''}</div>${turnStatus ? `<div class="player-turn-status">${escapeHTML(turnStatus)}</div>` : ''}</div>
            <div class="pscore">${E.scoreOf(G, p)}<small>/${G.megasEnabled ? E.MEGA_WIN_SCORE : E.WIN_SCORE}</small></div>
          </div>
          ${p.buried.length ? `<div class="buried-badge">已进化 ${p.buried.length}</div>` : ''}
          <div class="player-body">
            <div class="player-assets">
              <div class="pstats">${chips}</div>
-             <div class="pcards">${stacks || '<span style="color:var(--muted);font-size:12px">尚无宝可梦</span>'}</div>
+             <div class="pcards capture-zone" data-capture-zone>${stacks || '<span style="color:var(--muted);font-size:12px">尚无宝可梦</span>'}</div>
            </div>
            ${rz}
          </div>`;
@@ -754,15 +800,33 @@
 
   function renderLog() {
     const lines = G.log.slice(-40).map(l => {
-      let thumbs = '';
+      // Normalize older saves so the activity feed uses the current vocabulary too.
+      const message = String(l.msg || '')
+        .replaceAll('保留区', '预留区').replaceAll('签约区', '预留区')
+        .replaceAll('保留', '预留').replaceAll('签约', '预留')
+        .replaceAll('拿取', '领取');
+
       if (l.kind === 'take' && Array.isArray(l.colors)) {
-        thumbs = `<span class="log-thumbs">${l.colors.map(c => E.ALL_TOKENS.includes(c)
-          ? `<span class="log-thumb ball-thumb ball ${c}" title="${BALL_NAMES[c]}"></span>` : '').join('')}</span>`;
-      } else if (l.kind === 'capture' && byId[l.cardId]) {
-        const card = byId[l.cardId];
-        thumbs = `<span class="log-thumbs"><img class="log-thumb" src="${card.img}" alt="${escapeHTML(card.name)}" title="悬停查看 ${escapeHTML(card.name)}" data-zoom="${card.img}"></span>`;
+        const marker = '领取';
+        const markerAt = message.indexOf(marker);
+        const lead = markerAt >= 0 ? message.slice(0, markerAt + marker.length) : message;
+        const icons = l.colors.filter(c => E.ALL_TOKENS.includes(c)).map((color, index) =>
+          `${index ? '<span class="log-icon-sep">、</span>' : ''}<span class="log-thumb ball-thumb ball ${color}" title="${BALL_NAMES[color]}" aria-label="${BALL_NAMES[color]}"></span>`
+        ).join('');
+        return `<div class="ln log-inline"><span>${escapeHTML(lead)}</span><span class="log-thumbs">${icons}</span></div>`;
       }
-      return `<div class="ln">${thumbs}<span>${escapeHTML(l.msg)}</span></div>`;
+
+      if (l.kind === 'capture' && byId[l.cardId]) {
+        const card = byId[l.cardId];
+        const nameAt = message.indexOf(card.name);
+        if (nameAt >= 0) {
+          const lead = message.slice(0, nameAt);
+          const tail = message.slice(nameAt + card.name.length);
+          return `<div class="ln log-inline"><span>${escapeHTML(lead)}</span><span class="log-thumbs"><img class="log-thumb" src="${card.img}" alt="" title="${escapeHTML(card.name)}" data-zoom="${card.img}"></span><span>${escapeHTML(tail)}</span></div>`;
+        }
+      }
+
+      return `<div class="ln"><span>${escapeHTML(message)}</span></div>`;
     }).join('');
     const box = $('#log-lines'); box.innerHTML = lines || '<div class="log-empty">行动后，记录会出现在这里。</div>'; box.scrollTop = box.scrollHeight;
   }
@@ -780,63 +844,196 @@
     render();
   }
   function onCardClick(id) {
-    if (!interactable() || UI.pick.length) return;
+    if (!interactable()) return;
     if (byId[id] && byId[id].tier === 'mega') return; // Mega cards: zoom only; evolve at end of turn
-    UI.selCard = id; UI.selDeck = null; renderField(); renderActionBar();
+    if (UI.selCard === id) { openInspect(byId[id].img); return; }
+    const hadBallSelection = UI.pick.length > 0;
+    UI.pick = []; UI.selCard = id; UI.selDeck = null;
+    if (hadBallSelection) render(); else { renderField(); renderActionBar(); renderPlayers(); }
   }
   function onDeckClick(tier) {
-    if (!interactable()) return;
-    UI.selDeck = tier; UI.selCard = null; render();
+    if (!G || !G.decks || !Array.isArray(G.decks[tier])) return;
+    if (!E.NORMAL_TIERS.includes(tier)) { flashHint('传说与稀有牌堆不能预留'); return; }
+    if (!G.decks[tier].length) { flashHint('这个牌堆已经空了'); return; }
+    if (me().reserve.length >= E.HAND_MAX) { flashHint(`预留区已满（最多 ${E.HAND_MAX} 张）`); return; }
+    if (!interactable()) {
+      if (isOnline() && !myTurn()) flashHint('尚未轮到你');
+      else if (G.acted) flashHint('本回合已经行动');
+      else flashHint('当前不能预留牌堆顶');
+      return;
+    }
+    UI.pick = []; UI.selDeck = tier; UI.selCard = null; render();
   }
   function interactable() { return G && G.phase === 'play' && UI.phase === 'main' && !G.acted && !me().isAI && !UI.busy && (!isOnline() || (myTurn() && !UI.net.undoVote)); }
 
   // ---------------------------------------------------------------- animations
   const ANIM_MS = 620;
-  function centerOf(el) { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
-  function flyNode(n, fx, fy, tx, ty) {
+  function captureNetworkCardMoves(previous, next) {
+    if (!previous || !next || !Array.isArray(previous.players) || !Array.isArray(next.players)) return [];
+    const pid = previous.turn;
+    const before = previous.players[pid], after = next.players[pid];
+    if (!before || !after) return [];
+    const moves = [];
+    const beforeBoard = new Set(before.board || []);
+    const addedBoard = (after.board || []).filter(id => !beforeBoard.has(id));
+    for (const cardId of addedBoard) {
+      const reserveSlot = (before.reserve || []).findIndex(id => id === cardId);
+      const source = reserveSlot >= 0
+        ? $(`.player[data-player="${pid}"] [data-reserved-slot="${reserveSlot}"]`)
+        : $(`.card[data-card="${cardId}"]`);
+      const card = byId[cardId];
+      moves.push({ type: 'capture', pid, cardId, img: card ? card.img : null, tier: card ? card.tier : null, rect: source ? source.getBoundingClientRect() : null });
+    }
+    const beforeReserveN = (before.reserve || []).length;
+    const afterReserve = after.reserve || [];
+    if (afterReserve.length > beforeReserveN) {
+      const allBoards = new Set(next.players.flatMap(p => p.board || []));
+      for (let slot = beforeReserveN; slot < afterReserve.length; slot++) {
+        const value = afterReserve[slot];
+        const cardId = value && typeof value === 'object' ? null : value;
+        const card = cardId ? byId[cardId] : null;
+        const tier = card ? card.tier : value && value.tier;
+        let source = cardId ? $(`.card[data-card="${cardId}"]`) : null;
+        if (!source && tier && previous.field && next.field) {
+          const nextTier = new Set((next.field[tier] || []).filter(Boolean));
+          const removed = (previous.field[tier] || []).find(id => id && !nextTier.has(id) && !allBoards.has(id));
+          if (removed) source = $(`.card[data-card="${removed}"]`);
+        }
+        if (!source && tier) source = $(`.deck-pile[data-tier="${tier}"]`);
+        moves.push({ type: 'reserve', pid, cardId, reserveSlot: slot, img: card ? card.img : null, tier, rect: source ? source.getBoundingClientRect() : null });
+      }
+    }
+    return moves;
+  }
+  function playNetworkCardMoves(moves) {
+    const touched = new Set();
+    (moves || []).forEach((move, index) => {
+      const panel = $(`.player[data-player="${move.pid}"]`);
+      if (!panel) return;
+      let target = move.type === 'capture' && move.cardId
+        ? panel.querySelector(`[data-captured-card="${move.cardId}"]`)
+        : move.cardId ? panel.querySelector(`[data-reserved-card="${move.cardId}"]`) : null;
+      if (!target && move.type === 'reserve') target = panel.querySelector(`[data-reserved-slot="${move.reserveSlot}"]`);
+      target = target || panel.querySelector(move.type === 'reserve' ? '[data-reserve-zone]' : '[data-capture-zone]') || panel;
+      flyCard(move.img, move.rect, target.getBoundingClientRect(), move.tier, index * 65);
+      touched.add(move.pid);
+    });
+    touched.forEach((pid) => {
+      const panel = $(`.player[data-player="${pid}"]`);
+      if (panel) { panel.classList.add('receiving'); setTimeout(() => panel.classList.remove('receiving'), 520); }
+    });
+  }
+  function captureNetworkTokenMoves(previous, next) {
+    const moves = [];
+    if (!previous || !next || !Array.isArray(previous.players) || !Array.isArray(next.players)) return moves;
+    for (let pid = 0; pid < Math.min(previous.players.length, next.players.length); pid++) {
+      for (const color of E.ALL_TOKENS) {
+        const before = previous.players[pid].tokens[color] || 0;
+        const after = next.players[pid].tokens[color] || 0;
+        const delta = after - before;
+        const source = delta > 0
+          ? $(`.supply-row[data-supply-color="${color}"] .ball`)
+          : $(`.player[data-player="${pid}"] .trainer-token[data-token-color="${color}"] .ball`);
+        for (let n = 0; n < Math.abs(delta); n++) moves.push({ pid, color, direction: delta > 0 ? 'in' : 'out', rect: source ? source.getBoundingClientRect() : null });
+      }
+    }
+    return moves;
+  }
+  function playNetworkTokenMoves(moves) {
+    const touched = new Set();
+    (moves || []).forEach((move, index) => {
+      const target = move.direction === 'in'
+        ? $(`.player[data-player="${move.pid}"] .trainer-token[data-token-color="${move.color}"] .ball`)
+        : $(`.supply-row[data-supply-color="${move.color}"] .ball`);
+      flyBall(move.color, move.rect, target ? target.getBoundingClientRect() : null, index * 55);
+      if (move.direction === 'in') touched.add(move.pid);
+    });
+    touched.forEach((pid) => {
+      const panel = $(`.player[data-player="${pid}"]`);
+      if (panel) { panel.classList.add('receiving'); setTimeout(() => panel.classList.remove('receiving'), 520); }
+    });
+  }
+  function flyNode(n, fx, fy, tx, ty, delay) {
     n.style.transform = `translate(${fx}px,${fy}px)`;
     document.body.appendChild(n);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       n.style.transform = `translate(${tx}px,${ty}px) scale(.62)`;
       n.style.opacity = '0.12';
     }));
-    setTimeout(() => n.remove(), ANIM_MS + 90);
+    setTimeout(() => n.remove(), ANIM_MS + (delay || 0) + 90);
   }
-  function flyBall(color, rect, dc) {
-    if (!rect) return;
+  function flyBall(color, fromRect, toRect, delay) {
+    if (!fromRect || !toRect) return;
     const n = document.createElement('div'); n.className = 'fly'; n.innerHTML = `<div class="ball ${color}"></div>`;
-    flyNode(n, rect.left + rect.width / 2 - 17, rect.top + rect.height / 2 - 17, dc[0] - 17, dc[1] - 17);
+    if (delay) n.style.transitionDelay = delay + 'ms';
+    const size = 40;
+    flyNode(n,
+      fromRect.left + fromRect.width / 2 - size / 2,
+      fromRect.top + fromRect.height / 2 - size / 2,
+      toRect.left + toRect.width / 2 - size / 2,
+      toRect.top + toRect.height / 2 - size / 2,
+      delay);
   }
-  function flyCard(img, rect, dc, tier) {
+  function flyCard(img, fromRect, toRect, tier, delay) {
+    if (!toRect) return;
     const n = document.createElement('div'); n.className = 'fly fly-card';
     if (img) n.innerHTML = `<img src="${img}">`;
     else if (tier) n.setAttribute('data-tier', tier);          // blind deck reserve → tier-correct back
     else n.style.background = 'linear-gradient(135deg,#3a2a6e,#221a4a)';
-    const fx = rect ? rect.left + rect.width / 2 : dc[0], fy = rect ? rect.top + rect.height / 2 : dc[1];
-    flyNode(n, fx - 30, fy - 40, dc[0] - 30, dc[1] - 40);
+    if (delay) n.style.transitionDelay = delay + 'ms';
+    const fx = fromRect ? fromRect.left + fromRect.width / 2 : toRect.left + toRect.width / 2;
+    const fy = fromRect ? fromRect.top + fromRect.height / 2 : toRect.top + toRect.height / 2;
+    const tx = toRect.left + toRect.width / 2, ty = toRect.top + toRect.height / 2;
+    flyNode(n, fx - 30, fy - 40, tx - 30, ty - 40, delay);
   }
   function captureSrc(dec) {
     const src = [];
     if (!dec) return src;
     if (dec.type === 'take') {
-      for (const c of (dec.colors || [])) { const el = $(`.supply-row[data-color="${c}"] .ball`); src.push({ color: c, rect: el ? el.getBoundingClientRect() : null }); }
-    } else if (dec.cardId) {
+      for (const c of (dec.colors || [])) { const el = $(`.supply-row[data-color="${c}"] .ball`); src.push({ kind: 'ball-in', color: c, rect: el ? el.getBoundingClientRect() : null }); }
+    }
+    if (dec.cardId) {
       let el = $(`.card[data-card="${dec.cardId}"]`) || $(`[data-reserve-capture="${dec.cardId}"]`);
       const card = G.byId[dec.cardId];
-      src.push({ rect: el ? el.getBoundingClientRect() : null, img: card ? card.img : null });
+      src.push({ kind: 'card', cardId: dec.cardId, reserveSlot: G.players[G.turn].reserve.length, rect: el ? el.getBoundingClientRect() : null, img: card ? card.img : null });
+      if (dec.type === 'capture' && card && !(E.isPokemart(card) && card.effect === 'discard_buy')) {
+        const extraMaster = ((dec.opts && dec.opts.spendPokedex) || []).length * 2;
+        const payment = E.computePayment(G, G.players[G.turn], card, extraMaster);
+        if (payment.ok) for (const color of E.ALL_TOKENS) {
+          const token = $(`.player[data-player="${G.turn}"] .trainer-token[data-token-color="${color}"] .ball`);
+          for (let n = 0; n < (payment.pay[color] || 0); n++) src.push({ kind: 'ball-out', color, rect: token ? token.getBoundingClientRect() : null });
+        }
+      }
     } else if (dec.type === 'reserve' && dec.deck) {
       const el = $(`.deck-pile[data-tier="${dec.deck}"]`);   // blind deck reserve: fly a face-down card from the pile
-      src.push({ rect: el ? el.getBoundingClientRect() : null, img: null, tier: dec.deck });
+      src.push({ kind: 'card', reserveSlot: G.players[G.turn].reserve.length, rect: el ? el.getBoundingClientRect() : null, img: null, tier: dec.deck });
+    } else if (dec.type === 'discard' && dec.color) {
+      const token = $(`.player[data-player="${G.turn}"] .trainer-token[data-token-color="${dec.color}"] .ball`);
+      src.push({ kind: 'ball-out', color: dec.color, rect: token ? token.getBoundingClientRect() : null });
     }
     return src;
   }
   function playGhosts(src, dec, pid) {
-    const panel = $$('#players .player')[pid];
+    const panel = $(`.player[data-player="${pid}"]`);
     if (!panel) return;
-    panel.classList.add('receiving'); setTimeout(() => panel.classList.remove('receiving'), 520);
-    const dc = centerOf(panel);
-    if (dec.type === 'take') { for (const it of (src || [])) flyBall(it.color, it.rect, dc); }
-    else if (dec.type === 'capture' || dec.type === 'reserve') { const it = (src || [])[0]; if (it) flyCard(it.img, it.rect, dc, it.tier); }
+    if (dec.type !== 'discard') { panel.classList.add('receiving'); setTimeout(() => panel.classList.remove('receiving'), 520); }
+    let ballIndex = 0;
+    for (const it of (src || [])) {
+      if (it.kind === 'ball-in') {
+        const target = $(`.player[data-player="${pid}"] .trainer-token[data-token-color="${it.color}"] .ball`);
+        flyBall(it.color, it.rect, target ? target.getBoundingClientRect() : null, ballIndex++ * 65);
+      } else if (it.kind === 'ball-out') {
+        const target = $(`.supply-row[data-supply-color="${it.color}"] .ball`);
+        flyBall(it.color, it.rect, target ? target.getBoundingClientRect() : null, ballIndex++ * 65);
+      } else if (it.kind === 'card') {
+        let target = null;
+        if (dec.type === 'capture' && it.cardId) target = panel.querySelector(`[data-captured-card="${it.cardId}"]`);
+        else if (dec.type === 'reserve' && it.cardId) target = panel.querySelector(`[data-reserved-card="${it.cardId}"]`);
+        else if (dec.type === 'reserve') target = panel.querySelector(`[data-reserved-slot="${it.reserveSlot}"]`);
+        target = target || panel.querySelector(dec.type === 'reserve' ? '[data-reserve-zone]' : '[data-capture-zone]') || panel;
+        flyCard(it.img, it.rect, target.getBoundingClientRect(), it.tier);
+      }
+    }
   }
   // capture source rects, apply mutation, render, animate ghosts to the player, then continue
   function applyAnimated(dec, pid, mutate, after) {
@@ -857,17 +1054,48 @@
   function commitCapture(cid, opts) {
     const pid = G.turn;
     if (isOnline()) { Net.action({ type: 'capture', cardId: cid, opts }); UI.selCard = null; render(); return; }
-    applyAnimated({ type: 'capture', cardId: cid }, pid, () => { const r = E.actionCapture(G, cid, opts); if (r.ok) UI.selCard = null; return r; }, afterMainAction);
+    applyAnimated({ type: 'capture', cardId: cid, opts }, pid, () => { const r = E.actionCapture(G, cid, opts); if (r.ok) UI.selCard = null; return r; }, afterMainAction);
   }
-  function doCapture() {
+  async function doCapture() {
     const cid = UI.selCard, card = byId[cid];
+    const info = card && affordInfo(card);
+    if (!card || !info) return;
     // Cards needing player choices (Pokémart effects, or spending POKÉDEX) collect
     // them via a modal first; everything else captures immediately.
     UI.busy = true; updateUndoBtn();
-    gatherCaptureOpts(card).then((opts) => {
-      UI.busy = false;
-      if (opts === null) { render(); return; } // cancelled
-      commitCapture(cid, opts);
+    if (info.master > 0 && !(await confirmMasterUse(info.master))) {
+      UI.busy = false; render(); return;
+    }
+    const opts = await gatherCaptureOpts(card);
+    UI.busy = false;
+    if (opts === null) { render(); return; } // cancelled
+    commitCapture(cid, opts);
+  }
+
+  function confirmMasterUse(count) {
+    return new Promise((resolve) => {
+      const modal = $('#master-confirm-modal');
+      const ok = $('#master-confirm-ok'), cancel = $('#master-confirm-cancel');
+      $('#master-confirm-count').textContent = count;
+      $('#master-confirm-badge').textContent = `×${count}`;
+      const close = (answer) => {
+        modal.classList.add('hidden');
+        ok.removeEventListener('click', yes);
+        cancel.removeEventListener('click', no);
+        modal.removeEventListener('click', backdrop);
+        document.removeEventListener('keydown', escape);
+        resolve(answer);
+      };
+      const yes = () => close(true);
+      const no = () => close(false);
+      const backdrop = (event) => { if (event.target === modal) close(false); };
+      const escape = (event) => { if (event.key === 'Escape') close(false); };
+      ok.addEventListener('click', yes);
+      cancel.addEventListener('click', no);
+      modal.addEventListener('click', backdrop);
+      document.addEventListener('keydown', escape);
+      modal.classList.remove('hidden');
+      ok.focus();
     });
   }
 
@@ -1017,9 +1245,11 @@
   function doDiscard(color) {
     if (UI.phase !== 'discard') return;
     if (isOnline()) { Net.action({ type: 'discard', color }); return; }
-    E.actionDiscard(G, color);
-    if (!E.needsDiscard(G, me())) toEvolveOrEnd();
-    render();
+    const pid = G.turn;
+    applyAnimated({ type: 'discard', color }, pid, () => E.actionDiscard(G, color), () => {
+      if (!E.needsDiscard(G, me())) toEvolveOrEnd();
+      else render();
+    });
   }
   function doEvolve(fromId, toId) {
     if (isOnline()) { Net.action({ type: 'evolve', fromId, toId }); return; }
@@ -1078,7 +1308,7 @@
     let ov = $('#pass-overlay');
     if (!ov) { ov = document.createElement('div'); ov.id = 'pass-overlay'; document.body.appendChild(ov); }
     ov.innerHTML = `<div class="po-inner"><div class="pavatar" style="margin:0 auto 14px;width:56px;height:56px;background-color:${SEAT_COLORS[G.turn]};background-image:url(${seatAvatar(G.turn)});box-shadow:0 0 0 3px ${SEAT_COLORS[G.turn]}"></div>
-      <h2>请将设备交给<br>${escapeHTML(p.name)}</h2><p>（其他玩家的保留区将被隐藏）</p>
+      <h2>请将设备交给<br>${escapeHTML(p.name)}</h2><p>（其他玩家的预留区将被隐藏）</p>
       <button class="primary" id="ready-btn" style="margin-top:16px;padding:12px 30px">我准备好了</button></div>`;
     ov.classList.remove('hidden');
     $('#ready-btn').onclick = () => { ov.classList.add('hidden'); render(); };
@@ -1159,9 +1389,15 @@
 
   function flashHint(msg) {
     const bar = $('#action-bar');
-    const old = bar.innerHTML;
-    bar.insertAdjacentHTML('afterbegin', `<div class="act-hint" style="color:var(--bad)">${escapeHTML(msg)}</div>`);
-    setTimeout(() => { if (bar.firstChild) bar.firstChild.remove(); }, 1600);
+    bar.classList.remove('action-idle');
+    const note = document.createElement('div');
+    note.className = 'act-hint'; note.style.color = 'var(--bad)'; note.textContent = msg;
+    bar.prepend(note);
+    setTimeout(() => {
+      const stillShown = note.isConnected;
+      note.remove();
+      if (stillShown) renderActionBar();
+    }, 1600);
   }
 
   // ---------------------------------------------------------------- zoom preview
@@ -1183,40 +1419,13 @@
   // ------------------------------------------------------- tap-to-inspect (touch)
   // On touch there is no hover; tapping a card opens a large, readable overlay.
   function openInspect(src, actionsHtml) {
+    if (matchMedia('(min-width:1281px)').matches) return;
     const ov = $('#inspect'); if (!ov || !src) return;
     $('#inspect-img').src = src;
     $('#inspect-actions').innerHTML = (actionsHtml || '') + `<button class="ghost" data-inspect-close>关闭</button>`;
     ov.classList.remove('hidden');
   }
   function closeInspect() { const ov = $('#inspect'); if (ov) ov.classList.add('hidden'); }
-  // build capture/reserve buttons for the inspect overlay, if the card is actionable now
-  function inspectActionsFor(id) {
-    if (!interactable()) return '';
-    const p = me(), c = byId[id]; if (!c) return '';
-    const loc = E.locateCard(G, id);
-    const canReserve = loc && loc.where === 'field' && E.NORMAL_TIERS.includes(loc.tier) && p.reserve.length < E.HAND_MAX;
-    let h = '';
-    if (E.canAfford(G, p, c)) h += `<button class="primary" data-inspect-act="capture">捕捉</button>`;
-    if (canReserve) h += `<button class="ghost" data-inspect-act="reserve-card">保留</button>`;
-    return h;
-  }
-
-  // keep --dock-h in sync with the fixed mobile control dock so scroll content clears it
-  function syncDockH() {
-    const dock = $('#controls'); if (!dock) return;
-    const onMobile = matchMedia('(max-width:860px)').matches;
-    document.documentElement.style.setProperty('--dock-h', onMobile ? dock.offsetHeight + 'px' : '0px');
-  }
-  function trackDock() {
-    const dock = $('#controls'); if (!dock) return;
-    if (window.ResizeObserver) new ResizeObserver(syncDockH).observe(dock);
-    const mq = matchMedia('(max-width:860px)');
-    (mq.addEventListener ? mq.addEventListener('change', syncDockH) : mq.addListener && mq.addListener(syncDockH));
-    window.addEventListener('resize', syncDockH, { passive: true });
-    window.addEventListener('orientationchange', syncDockH);
-    syncDockH();
-  }
-
   // gentle, dismissible "rotate to landscape" hint for phones in portrait (never forced)
   let rotateDismissed = false;
   function evalRotateHint() {
@@ -1236,6 +1445,9 @@
 
   // ---------------------------------------------------------------- events
   function bind() {
+    // The game uses right-click as a secondary board action; suppress the
+    // browser menu everywhere so the interaction remains consistent.
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
     // setup
     if ($('#choose-online')) $('#choose-online').addEventListener('click', () => showSetupMode('online'));
     if ($('#choose-local')) $('#choose-local').addEventListener('click', () => showSetupMode('local'));
@@ -1316,15 +1528,26 @@
       onSupplyReturn(r.dataset.color);
     });
     $('#field').addEventListener('click', (e) => {
-      const rb = e.target.closest('[data-reserve-card]'); if (rb) { onCardClick(rb.dataset.reserveCard); doReserveCard(); return; }
-      const dk = e.target.closest('[data-deck]'); if (dk) { onDeckClick(dk.dataset.deck); return; }
+      const dk = e.target.closest('.deck-pile[data-tier]'); if (dk) { onDeckClick(dk.dataset.tier); return; }
       const cd = e.target.closest('[data-card]');
       if (cd) {
         const id = cd.dataset.card;
         const isMega = byId[id] && byId[id].tier === 'mega';
         // Mega cards (zoom-only) and any tap when it's not your turn → just enlarge for reading.
-        if (isMega || !interactable() || UI.pick.length) { openInspect(cd.dataset.zoom || (byId[id] && byId[id].img)); return; }
+        if (isMega || !interactable()) { openInspect(cd.dataset.zoom || (byId[id] && byId[id].img)); return; }
         onCardClick(id);
+      }
+    });
+    $('#field').addEventListener('contextmenu', (e) => {
+      const card = e.target.closest('[data-card]');
+      const deck = e.target.closest('.deck-pile[data-tier]');
+      if (!card && !deck) return;
+      e.preventDefault();
+      if ((card && UI.selCard === card.dataset.card) || (deck && UI.selDeck === deck.dataset.tier)) {
+        UI.selCard = UI.selDeck = null;
+        renderField();
+        renderActionBar();
+        renderPlayers();
       }
     });
     // tap the enlarged card thumbnail in the dock to open the full-screen reader (+ act)
@@ -1342,7 +1565,6 @@
     $('#log-close').addEventListener('click', () => setLogOpen(false));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setLogOpen(false); });
     $('#action-bar').addEventListener('click', (e) => {
-      if (e.target.closest('.sel-preview')) { if (UI.selCard) openInspect(byId[UI.selCard].img, inspectActionsFor(UI.selCard)); return; }
       const b = e.target.closest('[data-act],[data-discard],[data-evo-from],[data-mega]'); if (!b) return;
       if (b.dataset.act === 'confirm-take') doTake();
       else if (b.dataset.act === 'clear-take') { UI.pick = []; render(); }
@@ -1358,7 +1580,12 @@
     // own-reserve capture: clicking a revealed reserve mini-card selects it
     $('#players').addEventListener('click', (e) => {
       const mc = e.target.closest('[data-reserve-capture]');
-      if (mc && interactable()) { UI.selCard = mc.dataset.reserveCapture; UI.selDeck = null; UI.pick = []; render(); return; }
+      if (mc && interactable()) {
+        const id = mc.dataset.reserveCapture;
+        if (UI.selCard === id) openInspect(byId[id].img);
+        else { UI.selCard = id; UI.selDeck = null; UI.pick = []; render(); }
+        return;
+      }
       // any other captured/opponent card: tap to enlarge & read
       const z = e.target.closest('[data-zoom]');
       if (z && z.dataset.zoom) openInspect(z.dataset.zoom);
@@ -1369,7 +1596,6 @@
   showSetupMode('home');
   bind();
   setupZoom();
-  trackDock();
   setupRotateHint();
   offerResume();   // if a previous game was left unfinished, offer to continue it
   // deep-link: ?room=CODE → jump straight into that online lobby
