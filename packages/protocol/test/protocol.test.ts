@@ -57,6 +57,21 @@ test('server protocol validates state and control message variants', () => {
     turnTimeoutMs: null,
     undoAvailable: false,
   };
+  const stateWithHiddenReserve = structuredClone(state);
+  const opponent = stateWithHiddenReserve.players[1];
+  if (!opponent) throw new Error('测试局应当包含第二位训练家');
+  opponent.board.push('s1_01');
+  opponent.assoc['s1_01'] = 'red';
+  opponent.reserve.push({ hidden: true, tier: 'stage1' });
+  const hiddenReserveMessage: RoomServerMessage = {
+    t: 'state',
+    seq: 2,
+    state: stateWithHiddenReserve,
+    turnStartedAt: 100,
+    serverNow: 110,
+    turnTimeoutMs: 60_000,
+    undoAvailable: true,
+  };
   const validMessages: readonly RoomServerMessage[] = [
     { t: 'pong' },
     { t: 'welcome', connId: 'connection-1', seat: 0, host: true, token: null },
@@ -67,6 +82,7 @@ test('server protocol validates state and control message variants', () => {
       started: false,
     },
     stateMessage,
+    hiddenReserveMessage,
     { t: 'reject', reason: '非法操作', seq: 1 },
     { t: 'over', winner: null },
     { t: 'undo-vote', requesterSeat: 0, approvals: [0], total: 2 },
