@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+    branches: [main, feat/aliyun-multiplayer]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: docker build --target app -t pokemon-splendor-app:test .
+      - run: docker build --target web -t pokemon-splendor-web:test .

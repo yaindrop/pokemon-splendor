@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+.wrangler
+node_modules
+runtime
+train
+test
+docs
+worker
+assets/cards/_qc
+*.log
+.env*

@@ -249,5 +249,77 @@ test('state broadcast carries turnStartedAt / serverNow / turnTimeoutMs for the 
   assert.ok(s.turnTimeoutMs > 0, 'a turn timeout is advertised');
 });
 
+test('a lobby cannot start until at least two connected players are seated', () => {
+  const { room, last } = makeRoom();
+  room.now = 1000;
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cA', { t: 'start', opts: {} });
+  assert.match(last('cA', 'reject').reason, /至少.*2/);
+  assert.strictEqual(room.started, false);
+
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.leave('cB');
+  room.onMessage('cA', { t: 'start', opts: {} });
+  assert.match(last('cA', 'reject').reason, /至少.*2/);
+  assert.strictEqual(room.started, false);
+});
+
+test('leaving a lobby releases the seat and transfers host ownership', () => {
+  const { room, last } = makeRoom();
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.onMessage('cA', { t: 'leave' });
+
+  assert.strictEqual(room.seats.length, 1);
+  assert.strictEqual(room.seats[0].token, 'tB');
+  assert.strictEqual(last('cB', 'roster').players[0].name, 'B');
+  room.onMessage('cB', { t: 'start', opts: {} });
+  assert.match(last('cB', 'reject').reason, /至少.*2/);
+
+  room.onMessage('cC', { t: 'join', name: 'C', token: 'tC' });
+  room.onMessage('cB', { t: 'start', opts: {} });
+  assert.strictEqual(room.started, true, 'the transferred host can start');
+});
+
+test('a dropped lobby connection is removed so the lobby cannot be orphaned', () => {
+  const { room, last } = makeRoom();
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.leave('cA');
+
+  assert.strictEqual(room.seats.length, 1);
+  assert.strictEqual(room.conns.cB, 0);
+  assert.strictEqual(last('cB', 'welcome').seat, 0);
+  assert.strictEqual(last('cB', 'welcome').host, true);
+});
+
+test('reconnecting with a seat token revokes the older connection', () => {
+  const disconnected = [];
+  const inbox = {};
+  const room = new Room({
+    cardDB: DB,
+    send: (cid, msg) => { (inbox[cid] = inbox[cid] || []).push(msg); },
+    disconnect: (cid) => disconnected.push(cid),
+  });
+  room.onMessage('cA1', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cA2', { t: 'join', name: 'A', token: 'tA' });
+
+  assert.deepStrictEqual(disconnected, ['cA1']);
+  assert.strictEqual(room.conns.cA1, undefined);
+  assert.strictEqual(room.conns.cA2, 0);
+});
+
+test('the server can advance any timed-out turn without a host client', () => {
+  const { room, last } = makeRoom();
+  room.now = 0;
+  room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
+  room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
+  room.onMessage('cA', { t: 'start', opts: {} });
+
+  assert.strictEqual(room.timeoutTurn(1000), false, 'not timed out yet');
+  assert.strictEqual(room.timeoutTurn(200000), true, 'server performed the timed-out turn');
+  assert.strictEqual(last('cB', 'state').state.turn, 1);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -11,3 +11,6 @@ assets/policy.json
 !.dev.vars.example
 .env*
 !.env.example
+
+# self-hosted runtime data
+runtime/

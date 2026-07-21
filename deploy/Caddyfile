@@ -1,0 +1,22 @@
+{$SITE_ADDRESS} {
+  encode zstd gzip
+
+  @backend path /api/* /room/* /healthz /readyz
+  reverse_proxy @backend app:3000
+
+  root * /srv
+  file_server
+
+  @entry path / /index.html /sw.js /manifest.json
+  header @entry Cache-Control "no-cache"
+  @assets path /assets/*
+  header @assets Cache-Control "public, max-age=2592000, immutable"
+
+  header {
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    Referrer-Policy "no-referrer"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  }
+}

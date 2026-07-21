@@ -3,9 +3,9 @@
  * ---------------------------------------------------------------------
  * Holds the canonical game state for ONE online room and turns inbound
  * player messages into outbound (per-player) messages. The SAME class runs
- * inside a Cloudflare Durable Object (worker/index.js) and in an in-page
- * loopback (js/net.js) — only the transport differs. No WebSocket / DOM / DO
- * code lives here, so it is unit-testable headless (test/room.test.js).
+ * behind the Node WebSocket adapter and in headless tests — only the transport
+ * differs. No WebSocket / DOM / storage code lives here, so it is unit-testable
+ * through the same interface used in production (test/room.test.js).
  *
  * It injects a `send(connId, msg)` callback (the transport) and never reaches
  * out itself. Server-authoritative: every move is validated with the engine's
@@ -65,6 +65,7 @@
       this.pokemartDB = opts.pokemartDB || [];
       this.maxSeats = opts.maxSeats || 4;
       this.send = opts.send || function () { };  // (connId, msgObj) => void
+      this.disconnect = opts.disconnect || function () { }; // revoke a superseded live connection
       this.G = null;
       this.seq = 0;
       this.started = false;
@@ -90,6 +91,11 @@
       }
       if (seat >= 0) {
         const st = this.seats[seat];
+        const oldConnId = st.connId;
+        if (oldConnId && oldConnId !== connId) {
+          delete this.conns[oldConnId];
+          this.disconnect(oldConnId);
+        }
         st.token = token || st.token || ('seat' + seat);
         st.connId = connId;
         st.name = name || st.name || ('训练家 ' + (seat + 1));
@@ -98,13 +104,14 @@
       } else {
         this.conns[connId] = -1;                                // spectator
       }
-      this.send(connId, { t: 'welcome', connId, seat: this.conns[connId], host: seat === 0 });
+      this._welcome(connId);
       this._roster();
       if (this.started) this._stateTo(connId);                  // reconnect → resend snapshot
       return this.conns[connId];
     }
 
     leave(connId) {
+      if (!this.started) return this.leaveSeat(connId);
       const seat = this.conns[connId];
       if (seat != null && seat >= 0 && this.seats[seat]) {
         this.seats[seat].connected = false;
@@ -112,6 +119,33 @@
       }
       delete this.conns[connId];
       this._roster();
+    }
+
+    leaveSeat(connId) {
+      const seat = this.conns[connId];
+      if (seat == null || seat < 0) { delete this.conns[connId]; return; }
+      if (this.started) return this.leave(connId);
+      this.seats.splice(seat, 1);
+      delete this.conns[connId];
+      this._reindexConnections();
+      this._roster();
+    }
+
+    _welcome(connId) {
+      const seat = this.conns[connId];
+      this.send(connId, {
+        t: 'welcome', connId, seat, host: seat === 0,
+        token: seat != null && seat >= 0 ? this.seats[seat].token : null,
+      });
+    }
+
+    _reindexConnections() {
+      this.conns = {};
+      this.seats.forEach((seat, index) => {
+        if (!seat.connId) return;
+        this.conns[seat.connId] = index;
+        this._welcome(seat.connId);
+      });
     }
 
     // Quiet transport re-attach after the DO hibernates: restore a connId→seat
@@ -133,6 +167,7 @@
         case 'start':  return this._start(connId, msg.opts);
         case 'action': return this._action(connId, msg);
         case 'takeover': return this._takeover(connId, msg);
+        case 'leave':   return this.leaveSeat(connId);
         case 'sync':   return this._stateTo(connId);
       }
     }
@@ -140,7 +175,12 @@
     _start(connId, opts) {
       if (this.conns[connId] !== 0) return this.send(connId, { t: 'reject', reason: '只有房主可以开始游戏' });
       if (this.started) return this._stateTo(connId);
-      if (!this.seats.length) return this.send(connId, { t: 'reject', reason: '房间里还没有玩家' });
+      const connectedSeats = this.seats.filter(s => s.connected && s.connId);
+      if (connectedSeats.length < 2) return this.send(connId, { t: 'reject', reason: '至少需要 2 名在线玩家' });
+      if (connectedSeats.length !== this.seats.length) {
+        this.seats = connectedSeats;
+        this._reindexConnections();
+      }
       opts = opts || {};
       const names = this.seats.map((s, i) => s.name || ('训练家 ' + (i + 1)));
       // server-authoritative RNG: NEVER trust a client-supplied seed — it would let
@@ -182,11 +222,26 @@
     // truly elapsed (anti-cheat), then runs the whole turn for the active seat.
     _takeover(connId, msg) {
       if (this.conns[connId] !== 0) return this.send(connId, { t: 'reject', reason: '只有房主可以代打' });
-      if (!this.started || !this.G || this.G.phase !== 'play') return;
-      if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) return this.send(connId, { t: 'reject', reason: '尚未超时' });
+      if (!this.started || !this.G || this.G.phase !== 'play') return false;
+      if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) {
+        this.send(connId, { t: 'reject', reason: '尚未超时' });
+        return false;
+      }
+      return this._performTakeover((msg && msg.plan) || {});
+    }
+
+    // Production servers call this directly from their own timer, so progress no
+    // longer depends on the host browser staying online and submitting an AI plan.
+    timeoutTurn(now, plan) {
+      this.now = now;
+      if (!this.started || !this.G || this.G.phase !== 'play') return false;
+      if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) return false;
+      return this._performTakeover(plan || {});
+    }
+
+    _performTakeover(plan) {
       const seat = this.G.turn;
-      const plan = (msg && msg.plan) || {};
-      this.G.log.push({ turn: this.G.turn, round: this.G.round, msg: `⏱️ ${this.G.players[seat].name} 超时，房主AI代打` });
+      this.G.log.push({ turn: this.G.turn, round: this.G.round, msg: `⏱️ ${this.G.players[seat].name} 超时，服务器AI代打` });
       // main action (AI's pick, else any legal action, else a legitimate pass) — always acts
       let acted = false;
       try { if (plan.action) acted = E.applyAction(this.G, plan.action, seat).ok; } catch (e) { }
@@ -210,6 +265,7 @@
       this.seq++;
       this._broadcastState();
       if (this.G.phase === 'gameover') this._broadcast({ t: 'over', winner: this.G.winner });
+      return true;
     }
 
     // ------------------------------- outbound ------------------------------
@@ -249,5 +305,5 @@
     }
   }
 
-  return { Room, serializeG, reattachG };
+  return { Room, serializeG, reattachG, TURN_TIMEOUT_MS };
 });

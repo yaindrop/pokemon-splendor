@@ -1,5 +1,5 @@
 /* Pokémon Splendor — service worker (offline app shell + runtime card-image cache) */
-const VER = 'ps-cache-v8'; // v8: card art JPG→WebP (~58% smaller) — bump so old JPG bytes are evicted, not doubled up
+const VER = 'ps-cache-v9'; // v9: self-hosted multiplayer client and server-issued identity
 const BALLS = ['red', 'blue', 'black', 'pink', 'yellow', 'purple'].map(c => `./assets/balls/${c}.png`);
 const BACKS = ['stage1', 'stage2', 'stage3', 'rare', 'legend'].map(t => `./assets/backs/${t}.webp`);
 const AVATARS = ['ash', 'misty', 'brock', 'rocket'].map(a => `./assets/avatars/${a}.png`);
@@ -33,6 +33,7 @@ self.addEventListener('fetch', (e) => {
   let url;
   try { url = new URL(req.url); } catch (_) { return; }
   if (url.origin !== location.origin) return;
+  if (/^\/(api|room)(\/|$)/.test(url.pathname) || url.pathname === '/healthz' || url.pathname === '/readyz') return;
   const isShell = req.mode === 'navigate' || /\.(html|css|js|json)$/.test(url.pathname);
   if (isShell) {
     e.respondWith(

@@ -12,7 +12,6 @@
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon-192.png" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -173,10 +172,5 @@
   <script src="js/azai.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/tutorial.js"></script>
-  <script>
-    if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
-      addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
-    }
-  </script>
 </body>
 </html>

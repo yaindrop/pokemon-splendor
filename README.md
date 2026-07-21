@@ -29,7 +29,7 @@ npx serve .
 - **断线重连**：身份用本地 token 绑定座位，刷新 / 掉线后用同一浏览器重连即可复位座位与隐藏手牌。
 - **超时代打**：某玩家超过 **3 分钟**未行动，房主的「研究级 AI」会仅凭公共信息接管该回合，避免卡局。
 
-联机依赖一个 Cloudflare Worker（见下「部署」），纯静态托管（如 GitHub Pages）只能单机热座 + AI，无法联机。
+联机依赖仓库内的 Node.js 房间服务器（见下「部署」），纯静态托管只能进行单机热座 + AI，无法联机。
 
 ## 玩法要点
 
@@ -56,16 +56,17 @@ js/ai.js            电脑对手（评估函数 + 进化感知的一层搜索；
 js/vsearch.js       「究极」难度：基于启发式先验的去随机化 MCTS（仅 2 人）
 js/cards.js         卡牌数据库（自动生成，勿手改）
 js/megas.js         超级进化扩展 · js/pokemart.js  Pokémart 商店扩展
-js/net.js           联机客户端传输（window.Net：WebSocket + 心跳 + token 重连）
-js/room.js          联机房间权威（纯逻辑，浏览器与 Node 通用，可 headless 单测）
+js/net.js           联机客户端传输（WebSocket + 心跳 + 服务端 token 重连）
+js/room.js          联机房间权威（纯逻辑、服务端权威、可 headless 单测）
 js/tutorial.js      零基础新手教程（引导式）
 js/ui.js            界面与交互
-worker/index.js     Cloudflare Worker 入口 + 每房间一个 Durable Object（仅加传输，规则全在 room.js）
+server/             Node.js WebSocket 服务 + 原子文件房间存储
 data/cards.json     卡牌数据库（供 Node 测试）· data/megas.json · data/pokemart.json
 assets/cards/       100 张卡面 + 牌背（+ Pokémart pm_01..30）
 manifest.json sw.js PWA 清单与离线缓存
 test/               Node 单元测试（引擎 / AI / 扩展 / 联机房间）
-wrangler.jsonc      Cloudflare 部署配置（静态资源 + Durable Object + 自定义域名）
+Dockerfile          Node.js 与 Caddy 两个生产镜像
+compose.yaml        单节点生产编排（TLS / 健康检查 / 数据卷 / 资源限制）
 ```
 
 ## 开发与测试
@@ -74,14 +75,15 @@ wrangler.jsonc      Cloudflare 部署配置（静态资源 + Durable Object + �
 node test/engine.test.js   # 引擎规则 + 100 局自走验证（含计分/进化/结束/筹码守恒/脱敏）
 node test/ai.test.js       # AI 强度（对贪心基线胜率）/ 终局 / 延迟
 node test/room.test.js     # 联机房间权威（座位/脱敏/重连/持久化/超时代打）
+node test/server.test.js   # 自托管服务器（建房/WebSocket/重启恢复）
 node test/megas.test.js    # 超级进化扩展
 node test/pokemart.test.js # Pokémart 商店扩展
 ```
 
 ## 部署
 
-- **纯静态**（单机热座 + AI）：任意静态托管即可（如 GitHub Pages），双击 `index.html` 同款。
-- **含联机**：用 Cloudflare Workers 部署（`npx wrangler deploy`）。`wrangler.jsonc` 已配置 ASSETS 静态资源绑定、`Room` Durable Object 与自定义域名；Worker 把 `/room/:code/ws` 路由到对应房间的 DO，其余路径回退静态资源。
+- **纯静态**（单机热座 + AI）：任意静态托管即可，双击 `index.html` 同款。
+- **含联机**：复制 `.env.example` 为 `.env`，填写域名后运行 `docker compose up -d --build`。Caddy 自动申请 HTTPS 证书并代理 WebSocket，Node.js 保存服务端权威房间快照。详见 [`docs/DEPLOY_ALIYUN.md`](docs/DEPLOY_ALIYUN.md)。
 
 ## 致谢
 

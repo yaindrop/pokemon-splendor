@@ -40,7 +40,7 @@
     return aiWorker;
   }
   // Promise<plan> for a turn: kind = 'ultra' (VSearch+opts) or a heuristic difficulty.
-  // `state` defaults to the live G (also used with determinized states for takeover).
+  // `state` defaults to the live G.
   function aiComputeAsync(kind, opts, state) {
     const s = state || G;
     const sync = () => (kind === 'ultra' && window.VSearch)
@@ -58,6 +58,9 @@
   }
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const escapeHTML = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[ch]);
   const BALL_NAMES = { red: '精灵球', blue: '超级球', black: '高级球', pink: '治愈球', yellow: '先机球', purple: '大师球' };
   const TIER_NAMES = { legend: '传说', rare: '稀有', stage3: '三阶', stage2: '二阶', stage1: '一阶', mega: 'Mega', pmL1: '商店Ⅰ', pmL2: '商店Ⅱ', pmL3: '商店Ⅲ' };
   const EFFECT_NAMES = { copy: '进化石·关联', colorless_master: '图鉴·可抵2万能', double: '药水·双奖励', copy_free: '神奇糖果·关联+免费取卡', free: '技能机·免费取卡', discard_buy: '驱虫·弃2张同色购买' };
@@ -132,11 +135,6 @@
   }
 
   // ============================ online multiplayer ============================
-  function makeRoomCode() {
-    const ch = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s = '';
-    for (let i = 0; i < 5; i++) s += ch[Math.floor(Math.random() * ch.length)];
-    return s;
-  }
   function openOnline(code, asHost) {
     code = (code || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32);
     if (!code || !window.Net) return;
@@ -158,7 +156,7 @@
     Net.on('welcome', (m) => { if (UI.net) { UI.net.seat = m.seat; UI.net.host = m.host; renderLobby(); } });
     Net.on('roster', (m) => { if (UI.net) { UI.net.roster = m.players || []; UI.net.started = m.started; renderLobby(); } });
     Net.on('state', onNetState);
-    Net.on('reject', (m) => { if (UI.net) UI.net.takeoverBusy = false; flashHint((m && m.reason) || '操作被拒绝'); });
+    Net.on('reject', (m) => { flashHint((m && m.reason) || '操作被拒绝'); });
     Net.on('over', () => { });
   }
   function renderLobby() {
@@ -169,7 +167,7 @@
     const r = UI.net.roster || [];
     const rr = $('#lobby-roster');
     if (rr) rr.innerHTML = r.length
-      ? r.map(p => `<div class="lr-row"><span class="lr-dot ${p.connected ? 'on' : 'off'}"></span>${p.seat + 1}. ${p.name}${p.seat === 0 ? ' 👑' : ''}${p.seat === UI.net.seat ? '（你）' : ''}</div>`).join('')
+      ? r.map(p => `<div class="lr-row"><span class="lr-dot ${p.connected ? 'on' : 'off'}"></span>${p.seat + 1}. ${escapeHTML(p.name)}${p.seat === 0 ? ' 👑' : ''}${p.seat === UI.net.seat ? '（你）' : ''}</div>`).join('')
       : '<div class="muted">等待玩家加入…</div>';
     const start = $('#lobby-start');
     if (start) { start.style.display = UI.net.host ? '' : 'none'; start.disabled = !(r.length >= 2); }
@@ -179,7 +177,7 @@
   }
   function leaveOnline() {
     stopIdleTimer();
-    if (window.Net) Net.close();
+    if (window.Net) Net.leave();
     UI.net = null; gameEpoch++;
     try { history.replaceState(null, '', location.pathname); } catch (e) { }
     $('#lobby').classList.add('hidden'); $('#game').classList.add('hidden');
@@ -193,12 +191,11 @@
     if (!Array.isArray(st.log)) st.log = [];
     G = st; gameEpoch++;
     UI.net.started = true; UI.humans = G.numPlayers; UI.hasAI = false;
-    // idle-timeout clock (for AI takeover): store the server's turn-start + clock
+    // Idle-timeout clock: the server, not a browser, owns takeover.
     UI.net.turnStartedAt = m.turnStartedAt || 0;
     UI.net.serverNow = m.serverNow || 0;
     UI.net.turnTimeoutMs = m.turnTimeoutMs || 180000;
     UI.net.stateAt = Date.now();
-    UI.net.takeoverBusy = false;            // new authoritative state → allow a fresh takeover
     $('#setup').classList.add('hidden'); $('#lobby').classList.add('hidden');
     $('#game').classList.remove('hidden');
     recomputeOnlinePhase();
@@ -207,7 +204,7 @@
     if (G.phase === 'gameover') showWin();
   }
 
-  // ----- idle / disconnect → host's AI takeover -----
+  // ----- idle / disconnect → server AI takeover -----
   let idleTimer = null;
   function startIdleTimer() { if (!idleTimer) idleTimer = setInterval(idleTick, 1000); }
   function stopIdleTimer() { if (idleTimer) { clearInterval(idleTimer); idleTimer = null; } const ib = $('#idle-bar'); if (ib) ib.innerHTML = ''; }
@@ -226,50 +223,8 @@
     const msLeft = idleMsLeft();
     const secs = Math.max(0, Math.ceil(msLeft / 1000));
     const offline = !activeConnected();
-    if (UI.net.takeoverBusy) ib.innerHTML = '<span class="idle-ai">🤖 房主AI代打中…</span>';
-    else if (!myTurn()) ib.innerHTML = (offline || msLeft < 90000) ? `<span class="idle-wait">${offline ? '⚠ 对手已断线 · ' : ''}${secs} 秒后房主AI接管</span>` : '';
-    else if (!UI.net.host) ib.innerHTML = (msLeft < 60000) ? `<span class="idle-warn">⏱️ 你还有 ${secs} 秒，否则由房主AI代打</span>` : ''; // only non-host gets taken over
-    else ib.innerHTML = '';   // host's own turn: the host is never auto-taken-over
-    // the HOST drives takeover for an idle OTHER seat (never its own turn) once the
-    // timeout truly elapses (the server re-validates the timing).
-    if (msLeft <= 0 && !UI.net.takeoverBusy && UI.net.host && !myTurn()) {
-      UI.net.takeoverBusy = true;
-      setTimeout(() => { if (UI.net && UI.net.takeoverBusy) UI.net.takeoverBusy = false; }, 6000); // safety: never stick
-      setTimeout(() => { computeTakeoverPlan().then((plan) => { try { if (window.Net) Net.send({ t: 'takeover', plan }); } catch (e) { } }); }, 30);
-    }
-  }
-  // Reconstruct a plausible FULL state from our redacted view so the AI can run:
-  // fill the hidden deck with unseen cards, drop the hidden (stub) reserves. The AI
-  // therefore plays from PUBLIC info only — it never sees a player's hidden hand.
-  function determinizeForAI(s) {
-    const d = E.clone(s);
-    const seen = new Set();
-    for (const t in d.field) for (const id of (d.field[t] || [])) if (id) seen.add(id);
-    for (const id of (d.megaOffer || [])) seen.add(id);
-    d.players.forEach(p => {
-      (p.board || []).forEach(id => seen.add(id));
-      (p.buried || []).forEach(id => seen.add(id));
-      p.reserve = (p.reserve || []).filter(rid => typeof rid === 'string'); // drop {hidden,tier} stubs
-      p.reserve.forEach(id => seen.add(id));
-    });
-    const pools = {};
-    [].concat(DB, MEGA_DB, POKEMART_DB).forEach(c => { if (c && !seen.has(c.id)) (pools[c.tier] = pools[c.tier] || []).push(c.id); });
-    for (const t in d.decks) {
-      const pool = pools[t] || []; let k = 0;
-      d.decks[t] = (d.decks[t] || []).map(() => pool.length ? pool[k++ % pool.length] : null).filter(x => x != null);
-    }
-    return d;
-  }
-  // async: the heavy search runs in the AI worker (host UI stays responsive)
-  function computeTakeoverPlan() {
-    const EMPTY = { action: null, discards: [], evolution: null };
-    try {
-      const det = determinizeForAI(G);
-      const kind = (window.VSearch && det.numPlayers === 2) ? 'ultra' : 'hard';
-      return aiComputeAsync(kind, ULTRA_CFG, det)
-        .then((p) => (p && p.action) ? p : aiComputeAsync('hard', undefined, det))
-        .catch(() => EMPTY);
-    } catch (e) { return Promise.resolve(EMPTY); }
+    if (!myTurn()) ib.innerHTML = (offline || msLeft < 90000) ? `<span class="idle-wait">${offline ? '⚠ 对手已断线 · ' : ''}${secs} 秒后服务器AI接管</span>` : '';
+    else ib.innerHTML = (msLeft < 60000) ? `<span class="idle-warn">⏱️ 你还有 ${secs} 秒，否则由服务器AI代打</span>` : '';
   }
   // Derive the local UI phase from a snapshot. The board renders for everyone, but
   // you can only act on your own turn (interactable() also gates on myTurn()).
@@ -334,8 +289,8 @@
     const when = o.ts ? new Date(o.ts).toLocaleString('zh-CN', { hour12: false }) : '';
     const div = document.createElement('div');
     div.id = 'resume-banner'; div.className = 'resume-banner';
-    div.innerHTML = `<div class="rb-text">发现未完成的对局${seat ? `，轮到 <b>${seat}</b>` : ''}` +
-      `${vp ? `<br><small>${vp}</small>` : ''}${when ? `<br><small class="rb-when">${when}</small>` : ''}</div>` +
+    div.innerHTML = `<div class="rb-text">发现未完成的对局${seat ? `，轮到 <b>${escapeHTML(seat)}</b>` : ''}` +
+      `${vp ? `<br><small>${escapeHTML(vp)}</small>` : ''}${when ? `<br><small class="rb-when">${escapeHTML(when)}</small>` : ''}</div>` +
       `<div class="rb-btns"><button id="resume-btn" class="primary">▶ 继续上一局</button>` +
       `<button id="resume-discard" class="ghost">放弃</button></div>`;
     const card = $('.setup-card'), tagline = card && card.querySelector('.tagline');
@@ -400,15 +355,15 @@
     }
     chips += `<div class="mychip"><div class="ball purple sm"></div><span class="mc-tok">${p.tokens.purple}</span></div>`;
     if (G.megasEnabled) chips += `<div class="mychip"><div class="ball mega-token sm"></div><span class="mc-tok">${p.megaToken}</span></div>`;
-    host.innerHTML = `<span class="mc-label">我的资源 · ${p.name}</span><div class="mychips">${chips}</div>`;
+    host.innerHTML = `<span class="mc-label">我的资源 · ${escapeHTML(p.name)}</span><div class="mychips">${chips}</div>`;
   }
 
   function renderBanner() {
     const p = isOnline() ? G.players[G.turn] : me();
     let txt;
     if (G.phase === 'gameover') txt = '游戏结束';
-    else if (p.isAI) txt = `${p.name} 的回合 · <span class="thinking">思考中<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
-    else txt = `${p.name} 的回合${isOnline() && myTurn() ? '（你）' : ''}${G.lastRound ? ' · ⚠ 最后一轮' : ''}`;
+    else if (p.isAI) txt = `${escapeHTML(p.name)} 的回合 · <span class="thinking">思考中<span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
+    else txt = `${escapeHTML(p.name)} 的回合${isOnline() && myTurn() ? '（你）' : ''}${G.lastRound ? ' · ⚠ 最后一轮' : ''}`;
     $('#turn-banner').innerHTML = txt;
   }
 
@@ -628,7 +583,7 @@
     if (G.phase === 'gameover') { bar.innerHTML = '<div class="act-hint">游戏已结束。</div>'; return; }
     const p = me();
     if (p.isAI) { bar.innerHTML = '<div class="act-hint">电脑正在行动…</div>'; return; }
-    if (isOnline() && !myTurn()) { bar.innerHTML = `<div class="act-hint">等待 <b>${G.players[G.turn].name}</b> 行动…<br><span style="font-size:12px;opacity:.7">轮到你时这里会出现操作按钮</span></div>`; return; }
+    if (isOnline() && !myTurn()) { bar.innerHTML = `<div class="act-hint">等待 <b>${escapeHTML(G.players[G.turn].name)}</b> 行动…<br><span style="font-size:12px;opacity:.7">轮到你时这里会出现操作按钮</span></div>`; return; }
 
     if (UI.phase === 'discard') {
       const over = E.tokenTotal(p) - E.TOKEN_MAX;
@@ -747,7 +702,7 @@
       el.innerHTML =
         `<div class="player-head">
            <div class="pavatar" style="background-color:${SEAT_COLORS[i]};background-image:url(${seatAvatar(i)});box-shadow:0 0 0 2px ${SEAT_COLORS[i]}"></div>
-           <div class="pname">${p.name}</div>
+           <div class="pname">${escapeHTML(p.name)}</div>
            <div class="ptokens${tot > E.TOKEN_MAX ? ' over' : tot === E.TOKEN_MAX ? ' full' : ''}" title="持有的精灵球总数（回合结束上限 ${E.TOKEN_MAX} 个）"><span class="pt-lbl">球</span>${tot}<small>/${E.TOKEN_MAX}</small></div>
            <div class="pscore">${E.scoreOf(G, p)}<small>/${G.megasEnabled ? E.MEGA_WIN_SCORE : E.WIN_SCORE}</small></div>
          </div>
@@ -760,7 +715,7 @@
   }
 
   function renderLog() {
-    const lines = G.log.slice(-40).map(l => `<div class="ln">${l.msg}</div>`).join('');
+    const lines = G.log.slice(-40).map(l => `<div class="ln">${escapeHTML(l.msg)}</div>`).join('');
     const box = $('#log-lines'); box.innerHTML = lines; box.scrollTop = box.scrollHeight;
   }
 
@@ -1051,7 +1006,7 @@
     let ov = $('#pass-overlay');
     if (!ov) { ov = document.createElement('div'); ov.id = 'pass-overlay'; document.body.appendChild(ov); }
     ov.innerHTML = `<div class="po-inner"><div class="pavatar" style="margin:0 auto 14px;width:56px;height:56px;background-color:${SEAT_COLORS[G.turn]};background-image:url(${seatAvatar(G.turn)});box-shadow:0 0 0 3px ${SEAT_COLORS[G.turn]}"></div>
-      <h2>请将设备交给<br>${p.name}</h2><p>（其他玩家的保留区将被隐藏）</p>
+      <h2>请将设备交给<br>${escapeHTML(p.name)}</h2><p>（其他玩家的保留区将被隐藏）</p>
       <button class="primary" id="ready-btn" style="margin-top:16px;padding:12px 30px">我准备好了</button></div>`;
     ov.classList.remove('hidden');
     $('#ready-btn').onclick = () => { ov.classList.add('hidden'); render(); };
@@ -1125,15 +1080,15 @@
     const scores = G.players.map((p, i) => ({ i, s: E.scoreOf(G, p), bur: p.buried.length, brd: p.board.length, name: p.name }));
     const w = G.winner;
     let rows = scores.slice().sort((a, b) => b.s - a.s || b.bur - a.bur || b.brd - a.brd)
-      .map(r => `<div class="wrow${r.i === w ? ' winner' : ''}"><span>${r.i === w ? '👑 ' : ''}${r.name}</span><span>${r.s} 分 · ${r.brd} 只 · 进化 ${r.bur}</span></div>`).join('');
-    $('#win-content').innerHTML = `<div class="win-trophy">🏆</div><h2>${G.players[w].name} 获胜！</h2><div class="win-scores">${rows}</div>`;
+      .map(r => `<div class="wrow${r.i === w ? ' winner' : ''}"><span>${r.i === w ? '👑 ' : ''}${escapeHTML(r.name)}</span><span>${r.s} 分 · ${r.brd} 只 · 进化 ${r.bur}</span></div>`).join('');
+    $('#win-content').innerHTML = `<div class="win-trophy">🏆</div><h2>${escapeHTML(G.players[w].name)} 获胜！</h2><div class="win-scores">${rows}</div>`;
     $('#win-modal').classList.remove('hidden');
   }
 
   function flashHint(msg) {
     const bar = $('#action-bar');
     const old = bar.innerHTML;
-    bar.insertAdjacentHTML('afterbegin', `<div class="act-hint" style="color:var(--bad)">${msg}</div>`);
+    bar.insertAdjacentHTML('afterbegin', `<div class="act-hint" style="color:var(--bad)">${escapeHTML(msg)}</div>`);
     setTimeout(() => { if (bar.firstChild) bar.firstChild.remove(); }, 1600);
   }
 
@@ -1217,7 +1172,15 @@
     });
     $('#start-btn').addEventListener('click', startGame);
     // online lobby
-    if ($('#online-create')) $('#online-create').addEventListener('click', () => openOnline(makeRoomCode(), true));
+    if ($('#online-create')) $('#online-create').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      const oldText = button.textContent;
+      button.textContent = '创建中…';
+      try { openOnline(await Net.createRoom(), true); }
+      catch (error) { alert((error && error.message) || '无法创建房间'); }
+      finally { button.disabled = false; button.textContent = oldText; }
+    });
     if ($('#online-join')) $('#online-join').addEventListener('click', () => { const c = prompt('输入房间码：'); if (c) openOnline(c, false); });
     if ($('#lobby-start')) $('#lobby-start').addEventListener('click', () => { if (window.Net) Net.start({ megas: !!($('#lobby-megas') && $('#lobby-megas').checked), pokemart: !!($('#lobby-pokemart') && $('#lobby-pokemart').checked) }); });
     if ($('#lobby-leave')) $('#lobby-leave').addEventListener('click', leaveOnline);
@@ -1230,12 +1193,13 @@
     $('#menu-btn').addEventListener('click', () => {
       const inTut = window.Tutorial && Tutorial.active && Tutorial.active();
       if (confirm(inTut ? '退出教程，返回主菜单？' : '返回主菜单？当前对局将丢失。')) {
+        if (isOnline()) { leaveOnline(); return; }
         if (!inTut) clearSave();              // explicit quit of a real game = abandon its autosave
         if (window.Tutorial && Tutorial.stop) Tutorial.stop();
         backToSetup();
       }
     });
-    $('#play-again').addEventListener('click', () => { if (window.Tutorial && Tutorial.stop) Tutorial.stop(); backToSetup(); });
+    $('#play-again').addEventListener('click', () => { if (window.Tutorial && Tutorial.stop) Tutorial.stop(); if (isOnline()) leaveOnline(); else backToSetup(); });
 
     // delegated game clicks
     $('#supply').addEventListener('click', (e) => {
@@ -1313,4 +1277,8 @@
     render, enterGame, backToSetup, endTurn,
     setPhase(ph) { UI.phase = ph; },
   };
+
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
 })();
