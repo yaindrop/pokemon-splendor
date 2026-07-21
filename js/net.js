@@ -21,14 +21,16 @@
   function on(ev, fn) { handlers[ev] = fn; }
   function emit(ev, data) { if (handlers[ev]) { try { handlers[ev](data); } catch (e) { console.error('Net handler', ev, e); } } }
 
-  // Stable server-issued identity per room → reconnect reclaims the seat.
+  // A room identity belongs to one browser tab. sessionStorage survives a
+  // refresh, but unlike localStorage it is not shared by another tab/window —
+  // otherwise two players on one device continually steal the same seat.
   function token(code) {
     const k = 'pkmn_net_token_' + code;
-    try { return localStorage.getItem(k); } catch (e) { return null; }
+    try { return sessionStorage.getItem(k); } catch (e) { return null; }
   }
   function rememberToken(code, value) {
     if (!value) return;
-    try { localStorage.setItem('pkmn_net_token_' + code, value); } catch (e) { }
+    try { sessionStorage.setItem('pkmn_net_token_' + code, value); } catch (e) { }
   }
   function url(code) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';

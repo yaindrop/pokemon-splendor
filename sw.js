@@ -1,5 +1,5 @@
 /* Pokémon Splendor — service worker (offline app shell + runtime card-image cache) */
-const VER = 'ps-cache-v9'; // v9: self-hosted multiplayer client and server-issued identity
+const VER = 'ps-cache-v10'; // v10: isolate multiplayer seat identity per browser tab
 const BALLS = ['red', 'blue', 'black', 'pink', 'yellow', 'purple'].map(c => `./assets/balls/${c}.png`);
 const BACKS = ['stage1', 'stage2', 'stage3', 'rare', 'legend'].map(t => `./assets/backs/${t}.webp`);
 const AVATARS = ['ash', 'misty', 'brock', 'rocket'].map(a => `./assets/avatars/${a}.png`);

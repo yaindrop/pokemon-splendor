@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "test": "node test/engine.test.js && node test/room.test.js && node test/server.test.js && node test/megas.test.js && node test/pokemart.test.js",
+    "test": "node test/engine.test.js && node test/room.test.js && node test/server.test.js && node test/net.test.js && node test/megas.test.js && node test/pokemart.test.js",
     "test:ai": "node test/ai.test.js"
   },
   "dependencies": {
