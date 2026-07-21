@@ -26,7 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm build && playwright test",
     "python:sync": "uv sync --directory tools/training --all-groups",
     "python:check": "uv run --directory tools/training ruff format --check . && uv run --directory tools/training ruff check . && uv run --directory tools/training pytest",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm python:check && pnpm build"
