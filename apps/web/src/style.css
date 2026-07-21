@@ -710,6 +710,24 @@ button:disabled {
 .modal-box .primary {
   margin-top: 16px;
 }
+.base-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(6, 8, 24, 0.7);
+}
+.base-dialog-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 61;
+  display: grid;
+  place-items: center;
+  padding: max(16px, var(--sa-t)) 16px max(16px, var(--sa-b));
+  pointer-events: none;
+}
+.base-dialog-viewport .modal-box {
+  pointer-events: auto;
+}
 
 /* ---------- game shell ---------- */
 #game {

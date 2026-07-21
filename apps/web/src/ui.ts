@@ -24,6 +24,7 @@ import {
 } from '@pokemon-splendor/game-data';
 import { isGameStateSnapshot, type GameStateSnapshot } from '@pokemon-splendor/protocol';
 import { Net, type ConnectionStatus, type NetEventMap } from './net.js';
+import { requestMasterBallConfirmation } from './react/masterBallConfirmation.js';
 
 type Difficulty = NonNullable<Player['diff']>;
 type UiPhase = 'main' | 'discard' | 'evolve';
@@ -292,8 +293,6 @@ declare global {
     readonly 'lobby-start': HTMLButtonElement;
     readonly 'choice-confirm': HTMLButtonElement;
     readonly 'choice-cancel': HTMLButtonElement;
-    readonly 'master-confirm-ok': HTMLButtonElement;
-    readonly 'master-confirm-cancel': HTMLButtonElement;
   }
   function must<K extends keyof TypedElements>(
     selector: `#${K}`,
@@ -1969,7 +1968,7 @@ declare global {
     // them via a modal first; everything else captures immediately.
     UI.busy = true;
     updateUndoBtn();
-    if (info.master > 0 && !(await confirmMasterUse(info.master))) {
+    if (info.master > 0 && !(await requestMasterBallConfirmation(info.master))) {
       UI.busy = false;
       render();
       return;
@@ -1981,42 +1980,6 @@ declare global {
       return;
     } // cancelled
     commitCapture(cid, opts);
-  }
-
-  function confirmMasterUse(count: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const modal = must('#master-confirm-modal');
-      const ok = must('#master-confirm-ok'),
-        cancel = must('#master-confirm-cancel');
-      must('#master-confirm-count').textContent = String(count);
-      must('#master-confirm-badge').textContent = `×${count}`;
-      const close = (answer: boolean): void => {
-        modal.classList.add('hidden');
-        ok.removeEventListener('click', yes);
-        cancel.removeEventListener('click', no);
-        modal.removeEventListener('click', backdrop);
-        document.removeEventListener('keydown', escape);
-        resolve(answer);
-      };
-      const yes = (): void => {
-        close(true);
-      };
-      const no = (): void => {
-        close(false);
-      };
-      const backdrop = (event: MouseEvent): void => {
-        if (event.target === modal) close(false);
-      };
-      const escape = (event: KeyboardEvent): void => {
-        if (event.key === 'Escape') close(false);
-      };
-      ok.addEventListener('click', yes);
-      cancel.addEventListener('click', no);
-      modal.addEventListener('click', backdrop);
-      document.addEventListener('keydown', escape);
-      modal.classList.remove('hidden');
-      ok.focus();
-    });
   }
 
   // ---- Pokémart effect choice collection (returns a Promise<opts|null>) ----

@@ -305,27 +305,6 @@
       </div>
     </div>
 
-    <!-- Confirm spending scarce Master Balls before a capture. -->
-    <div
-      id="master-confirm-modal"
-      class="modal hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="master-confirm-title"
-    >
-      <div class="modal-box master-confirm-box">
-        <div class="master-confirm-token" aria-hidden="true">
-          <span class="ball purple"></span>
-          <span id="master-confirm-badge" class="master-confirm-badge">×1</span>
-        </div>
-        <h2 id="master-confirm-title">使用大师球？</h2>
-        <p>这次捕捉将消耗 <strong id="master-confirm-count">1</strong> 个大师球。</p>
-        <div class="master-confirm-actions">
-          <button id="master-confirm-cancel" class="ghost">返回</button>
-          <button id="master-confirm-ok" class="primary">使用并捕捉</button>
-        </div>
-      </div>
-    </div>
     <!-- gentle "rotate for a better view" hint (phones in portrait; dismissible) -->
     <div id="rotate-hint" class="hidden">
       <i class="ti ti-device-mobile-rotated" aria-hidden="true"></i> 横屏游玩体验更佳<button
@@ -336,6 +315,7 @@
       </button>
     </div>
 
+    <div id="react-root"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -23,7 +23,7 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     extends: [...tseslint.configs.strictTypeChecked],
     languageOptions: {
       parserOptions: {
@@ -55,7 +55,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/**/*.ts'],
+    files: ['apps/web/src/**/*.{ts,tsx}'],
     languageOptions: {
       globals: globals.browser,
     },
