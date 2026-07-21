@@ -2,6 +2,7 @@ const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer, WebSocket } = require('ws');
 const { Room, TURN_TIMEOUT_MS } = require('../js/room.js');
+const Engine = require('../js/engine.js');
 const AI = require('../js/ai.js');
 const DB = require('../data/cards.json');
 const MEGA_DB = require('../data/megas.json');
@@ -35,33 +36,6 @@ function normalizeName(value) {
   return Array.from(name).slice(0, 20).join('') || '训练家';
 }
 
-function validAction(action) {
-  if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.type !== 'string') return false;
-  const shortString = (value) => typeof value === 'string' && value.length > 0 && value.length <= 64;
-  const colors = new Set(['red', 'blue', 'black', 'pink', 'yellow', 'purple']);
-  switch (action.type) {
-    case 'take':
-      return Array.isArray(action.colors) && action.colors.length >= 1 && action.colors.length <= 3 && action.colors.every((color) => colors.has(color));
-    case 'capture':
-      return shortString(action.cardId) && (action.opts == null || (typeof action.opts === 'object' && !Array.isArray(action.opts)));
-    case 'reserve':
-      return !!action.target && typeof action.target === 'object' && !Array.isArray(action.target) &&
-        (shortString(action.target.fromField) || shortString(action.target.fromDeck));
-    case 'evolve':
-      return shortString(action.fromId) && shortString(action.toId);
-    case 'megaEvolve':
-      return shortString(action.megaId) && shortString(action.fromId);
-    case 'discard':
-      return colors.has(action.color);
-    case 'takeMega':
-    case 'pass':
-    case 'endTurn':
-      return true;
-    default:
-      return false;
-  }
-}
-
 function validMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) return false;
   if (!['ping', 'join', 'start', 'action', 'sync', 'leave'].includes(message.t)) return false;
@@ -70,7 +44,7 @@ function validMessage(message) {
       (message.token == null || (typeof message.token === 'string' && /^[a-f0-9]{64}$/.test(message.token)));
   }
   if (message.t === 'action') return Number.isSafeInteger(message.seq) && message.seq > 0 &&
-    validAction(message.action);
+    Engine.validActionShape(message.action);
   if (message.t === 'start') {
     if (message.opts == null) return true;
     if (typeof message.opts !== 'object' || Array.isArray(message.opts)) return false;
@@ -91,6 +65,14 @@ function requestOriginAllowed(request, configuredOrigins) {
 
 function clientIp(request) {
   return String(request.headers['x-forwarded-for'] || request.socket.remoteAddress || '').split(',')[0].trim();
+}
+
+function consumeFixedWindow(buckets, key, now, windowMs, limit) {
+  let bucket = buckets.get(key);
+  if (!bucket || now - bucket.startedAt >= windowMs) bucket = { startedAt: now, count: 0 };
+  bucket.count++;
+  buckets.set(key, bucket);
+  return bucket.count <= limit;
 }
 
 class RoomSession {
@@ -224,6 +206,8 @@ function createRoomServer(options = {}) {
   const sessions = new Map();
   const roomCreates = new Map();
   const activeConnections = new Map();
+  const connectionAttempts = new Map();
+  const ipMessageRates = new Map();
   const roomTtlMs = options.roomTtlMs || 7 * 24 * 60 * 60 * 1000;
   const sessionOptions = { lobbyDisconnectGraceMs: options.lobbyDisconnectGraceMs || 15000 };
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: MAX_MESSAGE_BYTES });
@@ -257,10 +241,7 @@ function createRoomServer(options = {}) {
       if (!requestOriginAllowed(request, allowedOrigins)) return json(response, 403, { error: 'forbidden origin' });
       const ip = clientIp(request);
       const now = Date.now();
-      let quota = roomCreates.get(ip);
-      if (!quota || now - quota.startedAt >= 60 * 60 * 1000) quota = { startedAt: now, count: 0 };
-      roomCreates.set(ip, quota);
-      if (++quota.count > 20) return json(response, 429, { error: '创建房间过于频繁' });
+      if (!consumeFixedWindow(roomCreates, ip, now, 60 * 60 * 1000, 20)) return json(response, 429, { error: '创建房间过于频繁' });
       return void createRoom()
         .then((code) => json(response, 201, { code }))
         .catch(() => json(response, 503, { error: '暂时无法创建房间' }));
@@ -278,6 +259,10 @@ function createRoomServer(options = {}) {
         await store.delete(code);
       }
     }).catch(() => {});
+    const now = Date.now();
+    for (const [ip, bucket] of roomCreates) if (now - bucket.startedAt >= 60 * 60 * 1000) roomCreates.delete(ip);
+    for (const [ip, bucket] of connectionAttempts) if (now - bucket.startedAt >= 60 * 1000) connectionAttempts.delete(ip);
+    for (const [ip, bucket] of ipMessageRates) if (now - bucket.startedAt >= 10 * 1000) ipMessageRates.delete(ip);
   }, Math.min(roomTtlMs, 60 * 60 * 1000));
   if (cleanupTimer.unref) cleanupTimer.unref();
 
@@ -302,6 +287,11 @@ function createRoomServer(options = {}) {
         return;
       }
       request.clientIp = clientIp(request);
+      if (!consumeFixedWindow(connectionAttempts, request.clientIp, Date.now(), 60 * 1000, 60)) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
       if ((activeConnections.get(request.clientIp) || 0) >= 20) {
         socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
         socket.destroy();
@@ -323,6 +313,7 @@ function createRoomServer(options = {}) {
       const now = Date.now();
       if (now - rate.startedAt >= 10000) { rate.startedAt = now; rate.count = 0; }
       if (++rate.count > 40) return socket.close(1008, 'rate limit');
+      if (!consumeFixedWindow(ipMessageRates, ip, now, 10000, 200)) return socket.close(1008, 'ip rate limit');
       let message;
       try { message = JSON.parse(data.toString()); } catch (_) { return socket.close(1007, 'invalid json'); }
       if (!validMessage(message)) return socket.close(1008, 'invalid message');

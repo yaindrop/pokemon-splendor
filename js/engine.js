@@ -867,7 +867,49 @@
   // guard for networked play (reject a move submitted for a seat that isn't the
   // active player); local/AI callers omit it. End-of-turn steps (evolve / mega
   // / discard / endTurn) are included so a turn's whole lifecycle is serialisable.
+  function validActionShape(a) {
+    if (!a || typeof a !== 'object' || Array.isArray(a) || typeof a.type !== 'string') return false;
+    const keysAre = (allowed) => Object.keys(a).every(k => allowed.indexOf(k) >= 0);
+    const shortId = (value) => typeof value === 'string' && value.length > 0 && value.length <= 64;
+    const stringList = (value, max) => Array.isArray(value) && value.length <= max && value.every(shortId);
+    function validCaptureOpts(opts, depth) {
+      if (opts == null) return true;
+      if (depth > 3 || typeof opts !== 'object' || Array.isArray(opts)) return false;
+      const allowed = ['copyTargetId', 'spendPokedex', 'discardCards', 'freeTakeId', 'freeOpts'];
+      if (!Object.keys(opts).every(k => allowed.indexOf(k) >= 0)) return false;
+      if (opts.copyTargetId != null && !shortId(opts.copyTargetId)) return false;
+      if (opts.freeTakeId != null && !shortId(opts.freeTakeId)) return false;
+      if (opts.spendPokedex != null && !stringList(opts.spendPokedex, 10)) return false;
+      if (opts.discardCards != null && !stringList(opts.discardCards, 10)) return false;
+      return opts.freeOpts == null || validCaptureOpts(opts.freeOpts, depth + 1);
+    }
+    switch (a.type) {
+      case 'take':
+        return keysAre(['type', 'colors']) && Array.isArray(a.colors) && a.colors.length >= 1 && a.colors.length <= 3 && a.colors.every(c => ALL_TOKENS.indexOf(c) >= 0);
+      case 'capture':
+        return keysAre(['type', 'cardId', 'opts']) && shortId(a.cardId) && validCaptureOpts(a.opts, 0);
+      case 'reserve': {
+        if (!keysAre(['type', 'target']) || !a.target || typeof a.target !== 'object' || Array.isArray(a.target)) return false;
+        if (!Object.keys(a.target).every(k => k === 'fromField' || k === 'fromDeck')) return false;
+        return [a.target.fromField, a.target.fromDeck].filter(shortId).length === 1;
+      }
+      case 'evolve':
+        return keysAre(['type', 'fromId', 'toId']) && shortId(a.fromId) && shortId(a.toId);
+      case 'megaEvolve':
+        return keysAre(['type', 'megaId', 'fromId']) && shortId(a.megaId) && shortId(a.fromId);
+      case 'discard':
+        return keysAre(['type', 'color']) && ALL_TOKENS.indexOf(a.color) >= 0;
+      case 'takeMega':
+      case 'pass':
+      case 'endTurn':
+        return keysAre(['type']);
+      default:
+        return false;
+    }
+  }
+
   function applyAction(s, a, playerId) {
+    if (!validActionShape(a)) return { ok: false, error: '行动格式无效' };
     if (playerId != null && playerId !== s.turn) return { ok: false, error: '未轮到你' };
     switch (a.type) {
       case 'take':       return actionTake(s, a.colors);
@@ -936,7 +978,7 @@
     actionTakeMega, megaEvolveOptions, actionMegaEvolve, MEGA_TOKENS, MEGA_WIN_SCORE,
     PM_TIERS, PM_SLOTS, fieldTiers, isPokemart, effBonusColor, freeTiers, freeTakeable, autoCaptureOpts,
     evolutionOptions, needsDiscard, turnState, endTurn, determineWinner,
-    legalActions, applyAction, redactFor, clone,
+    legalActions, validActionShape, applyAction, redactFor, clone,
     zhBall, zhTier, payDesc,
   };
 });

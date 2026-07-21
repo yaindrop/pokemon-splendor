@@ -47,6 +47,8 @@ function messageOfType(ws, type) {
     assert.ok(Array.from(normalized).length <= 20);
     assert.strictEqual(validMessage({ t: 'start', opts: { megas: 'yes' } }), false);
     assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'take', colors: ['red', 'blue', 'black', 'pink'] } }), false);
+    assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'capture', cardId: 's1_01', opts: { injected: true } } }), false);
+    assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'endTurn', injected: true } }), false);
     assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'endTurn' } }), true);
   });
 
