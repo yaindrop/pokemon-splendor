@@ -1,25 +1,32 @@
-FROM caddy:2-alpine AS web
+FROM node:24.18.0-alpine3.23 AS build
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+WORKDIR /workspace
+
+RUN corepack enable && corepack prepare pnpm@11.15.1 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc tsconfig*.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+RUN pnpm install --frozen-lockfile && \
+    pnpm build && \
+    pnpm --filter @pokemon-splendor/server deploy --prod /release/server
+
+FROM caddy:2.11.4-alpine AS web
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-COPY index.html manifest.json sw.js icon-192.png icon-512.png apple-touch-icon.png /srv/
-COPY css /srv/css
-COPY js /srv/js
-COPY assets /srv/assets
+COPY --from=build /workspace/apps/web/dist /srv
 
-FROM node:24-alpine AS app
+FROM node:24.18.0-alpine3.23 AS app
 
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-
-COPY server ./server
-COPY js/engine.js js/room.js js/ai.js ./js/
-COPY data ./data
+COPY --from=build --chown=node:node /release/server ./
 
 RUN mkdir -p /data/rooms && chown -R node:node /data
 USER node
 
 EXPOSE 3000
-CMD ["node", "server/index.js"]
+CMD ["node", "dist/index.js"]

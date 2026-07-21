@@ -8,16 +8,37 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-and-build:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm test
+          version: 11.15.1
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm build
+      - run: pnpm audit --audit-level high
+      - uses: astral-sh/setup-uv@v8
+        with:
+          version: 0.11.30
+          enable-cache: true
+          cache-dependency-glob: tools/training/uv.lock
+      - run: uv sync --directory tools/training --all-groups --frozen
+      - run: pnpm python:check
       - run: docker build --target app -t pokemon-splendor-app:test .
       - run: docker build --target web -t pokemon-splendor-web:test .

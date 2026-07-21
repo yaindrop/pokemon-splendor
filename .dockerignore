@@ -4,10 +4,12 @@
 .wrangler
 node_modules
 runtime
-train
-test
+tools/training
+**/test
 docs
-worker
-assets/cards/_qc
+apps/web/public/assets/cards/_qc
+**/dist
+coverage
+.venv
 *.log
 .env*
