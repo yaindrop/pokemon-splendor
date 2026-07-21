@@ -41,10 +41,13 @@ function messageOfType(ws, type) {
 
 (async () => {
   await test('player names are bounded and cannot carry HTML markup', async () => {
-    const { normalizeName } = require('../server/room-server.js');
+    const { normalizeName, validMessage } = require('../server/room-server.js');
     const normalized = normalizeName('<img src=x onerror="alert(1)">超长名字超长名字超长名字超长名字');
     assert.ok(!/[<>"']/.test(normalized));
     assert.ok(Array.from(normalized).length <= 20);
+    assert.strictEqual(validMessage({ t: 'start', opts: { megas: 'yes' } }), false);
+    assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'take', colors: ['red', 'blue', 'black', 'pink'] } }), false);
+    assert.strictEqual(validMessage({ t: 'action', seq: 1, action: { type: 'endTurn' } }), true);
   });
 
   await test('FileRoomStore persists, reloads, and deletes a room snapshot', async () => {
@@ -86,18 +89,29 @@ function messageOfType(ws, type) {
         assert.match(code, /^[A-Z2-9]{8}$/);
 
         const wsUrl = base.replace('http:', 'ws:') + `/room/${code}/ws`;
-        const a = new WebSocket(wsUrl);
+        let a = new WebSocket(wsUrl);
         const b = new WebSocket(wsUrl);
         await Promise.all([
           new Promise((resolve) => a.once('open', resolve)),
           new Promise((resolve) => b.once('open', resolve)),
         ]);
 
+        const pong = messageOfType(a, 'pong');
+        a.send(JSON.stringify({ t: 'ping' }));
+        await pong;
+
         const welcomeA = messageOfType(a, 'welcome');
         a.send(JSON.stringify({ t: 'join', name: 'Alice' }));
         const wa = await welcomeA;
         assert.strictEqual(wa.seat, 0);
         assert.match(wa.token, /^[a-f0-9]{64}$/);
+
+        a.terminate();
+        a = new WebSocket(wsUrl);
+        await new Promise((resolve) => a.once('open', resolve));
+        const resumedA = messageOfType(a, 'welcome');
+        a.send(JSON.stringify({ t: 'join', name: 'Alice', token: wa.token }));
+        assert.strictEqual((await resumedA).seat, 0, 'brief lobby disconnect keeps the seat');
 
         const welcomeB = messageOfType(b, 'welcome');
         b.send(JSON.stringify({ t: 'join', name: 'Bob' }));

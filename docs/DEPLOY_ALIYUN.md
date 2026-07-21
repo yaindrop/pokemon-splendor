@@ -32,6 +32,15 @@ docker compose ps
 curl -fsS https://game.example.com/healthz
 ```
 
+安装每日备份定时器：
+
+```bash
+install -m 644 deploy/pokemon-splendor-backup.service /etc/systemd/system/
+install -m 644 deploy/pokemon-splendor-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now pokemon-splendor-backup.timer
+```
+
 Node.js 端口不映射到宿主机；所有 HTTP 和 WebSocket 流量都由 Caddy 进入。房间快照位于 `runtime/rooms`，权限应保持为仅部署用户可读写。
 
 ## 更新与回滚
@@ -50,7 +59,7 @@ docker compose up -d --build
 
 ## 验收
 
-1. `docker compose ps` 中两个容器均为 healthy/running。
+1. `docker compose ps` 中两个容器均为 healthy。
 2. `/healthz` 返回 `{"ok":true}`。
 3. 两个无痕窗口可以创建房间、加入并开始游戏。
 4. 刷新后恢复原座位；重启 `app` 容器后对局仍在。

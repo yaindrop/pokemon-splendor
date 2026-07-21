@@ -110,25 +110,45 @@
       return this.conns[connId];
     }
 
+    resolveJoinToken(presentedToken, mintToken) {
+      if (typeof presentedToken === 'string' && this.seats.some((seat) => seat.token === presentedToken)) {
+        return presentedToken;
+      }
+      return mintToken();
+    }
+
     leave(connId) {
-      if (!this.started) return this.leaveSeat(connId);
       const seat = this.conns[connId];
+      let reconnectToken = null;
       if (seat != null && seat >= 0 && this.seats[seat]) {
+        if (!this.started) reconnectToken = this.seats[seat].token;
         this.seats[seat].connected = false;
         this.seats[seat].connId = null;                         // keep token → seat reclaimable
       }
       delete this.conns[connId];
       this._roster();
+      return reconnectToken;
     }
 
     leaveSeat(connId) {
       const seat = this.conns[connId];
-      if (seat == null || seat < 0) { delete this.conns[connId]; return; }
+      if (seat == null || seat < 0) { delete this.conns[connId]; return false; }
       if (this.started) return this.leave(connId);
       this.seats.splice(seat, 1);
       delete this.conns[connId];
       this._reindexConnections();
       this._roster();
+      return true;
+    }
+
+    releaseDisconnectedSeat(token) {
+      if (this.started) return false;
+      const seat = this.seats.findIndex((candidate) => candidate.token === token && !candidate.connected);
+      if (seat < 0) return false;
+      this.seats.splice(seat, 1);
+      this._reindexConnections();
+      this._roster();
+      return true;
     }
 
     _welcome(connId) {
@@ -232,11 +252,21 @@
 
     // Production servers call this directly from their own timer, so progress no
     // longer depends on the host browser staying online and submitting an AI plan.
-    timeoutTurn(now, plan) {
+    timeoutTurn(now, planOrFactory) {
       this.now = now;
       if (!this.started || !this.G || this.G.phase !== 'play') return false;
       if (this.now - this.turnStartedAt < TURN_TIMEOUT_MS) return false;
+      let plan = planOrFactory || {};
+      if (typeof planOrFactory === 'function') {
+        try { plan = planOrFactory(this.G) || {}; } catch (_) { plan = {}; }
+      }
       return this._performTakeover(plan || {});
+    }
+
+    nextTimeoutAt() {
+      if (!this.started || !this.G || this.G.phase !== 'play') return null;
+      if (!this.seats.some((seat) => seat.connected)) return null;
+      return this.turnStartedAt + TURN_TIMEOUT_MS;
     }
 
     _performTakeover(plan) {

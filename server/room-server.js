@@ -7,9 +7,9 @@ const DB = require('../data/cards.json');
 const MEGA_DB = require('../data/megas.json');
 const POKEMART_DB = require('../data/pokemart.json');
 const { FileRoomStore } = require('./file-room-store.js');
+const { isRoomCode, randomRoomCode } = require('./room-code.js');
 
-const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const ROOM_PATH = /^\/room\/([A-Z2-9]{8})\/ws$/;
+const ROOM_PATH = /^\/room\/([^/]+)\/ws$/;
 const MAX_CONNECTIONS_PER_ROOM = 12;
 const MAX_MESSAGE_BYTES = 8192;
 const MUTATING_MESSAGES = new Set(['join', 'start', 'action', 'leave']);
@@ -25,13 +25,6 @@ function json(response, status, body) {
   response.end(data);
 }
 
-function randomCode() {
-  const bytes = crypto.randomBytes(8);
-  let code = '';
-  for (const byte of bytes) code += ROOM_ALPHABET[byte % ROOM_ALPHABET.length];
-  return code;
-}
-
 function randomToken() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -42,16 +35,48 @@ function normalizeName(value) {
   return Array.from(name).slice(0, 20).join('') || '训练家';
 }
 
+function validAction(action) {
+  if (!action || typeof action !== 'object' || Array.isArray(action) || typeof action.type !== 'string') return false;
+  const shortString = (value) => typeof value === 'string' && value.length > 0 && value.length <= 64;
+  const colors = new Set(['red', 'blue', 'black', 'pink', 'yellow', 'purple']);
+  switch (action.type) {
+    case 'take':
+      return Array.isArray(action.colors) && action.colors.length >= 1 && action.colors.length <= 3 && action.colors.every((color) => colors.has(color));
+    case 'capture':
+      return shortString(action.cardId) && (action.opts == null || (typeof action.opts === 'object' && !Array.isArray(action.opts)));
+    case 'reserve':
+      return !!action.target && typeof action.target === 'object' && !Array.isArray(action.target) &&
+        (shortString(action.target.fromField) || shortString(action.target.fromDeck));
+    case 'evolve':
+      return shortString(action.fromId) && shortString(action.toId);
+    case 'megaEvolve':
+      return shortString(action.megaId) && shortString(action.fromId);
+    case 'discard':
+      return colors.has(action.color);
+    case 'takeMega':
+    case 'pass':
+    case 'endTurn':
+      return true;
+    default:
+      return false;
+  }
+}
+
 function validMessage(message) {
   if (!message || typeof message !== 'object' || Array.isArray(message)) return false;
-  if (!['join', 'start', 'action', 'sync', 'leave'].includes(message.t)) return false;
+  if (!['ping', 'join', 'start', 'action', 'sync', 'leave'].includes(message.t)) return false;
   if (message.t === 'join') {
     return (message.name == null || typeof message.name === 'string') &&
-      (message.token == null || (typeof message.token === 'string' && message.token.length <= 128));
+      (message.token == null || (typeof message.token === 'string' && /^[a-f0-9]{64}$/.test(message.token)));
   }
   if (message.t === 'action') return Number.isSafeInteger(message.seq) && message.seq > 0 &&
-    !!message.action && typeof message.action === 'object' && typeof message.action.type === 'string';
-  if (message.t === 'start') return message.opts == null || (typeof message.opts === 'object' && !Array.isArray(message.opts));
+    validAction(message.action);
+  if (message.t === 'start') {
+    if (message.opts == null) return true;
+    if (typeof message.opts !== 'object' || Array.isArray(message.opts)) return false;
+    return Object.keys(message.opts).every((key) => ['megas', 'pokemart'].includes(key)) &&
+      ['megas', 'pokemart'].every((key) => message.opts[key] == null || typeof message.opts[key] === 'boolean');
+  }
   return true;
 }
 
@@ -64,8 +89,12 @@ function requestOriginAllowed(request, configuredOrigins) {
   return origin === `${protocol}://${request.headers.host}`;
 }
 
+function clientIp(request) {
+  return String(request.headers['x-forwarded-for'] || request.socket.remoteAddress || '').split(',')[0].trim();
+}
+
 class RoomSession {
-  constructor(code, store, envelope) {
+  constructor(code, store, envelope, options = {}) {
     this.code = code;
     this.store = store;
     this.createdAt = envelope && envelope.createdAt || Date.now();
@@ -73,6 +102,8 @@ class RoomSession {
     this.sockets = new Map();
     this.work = Promise.resolve();
     this.turnTimer = null;
+    this.lobbyDisconnectGraceMs = options.lobbyDisconnectGraceMs || 15000;
+    this.lobbyReleaseTimers = new Map();
     this.authority = new Room({
       cardDB: DB,
       megaDB: MEGA_DB,
@@ -80,7 +111,12 @@ class RoomSession {
       send: (connId, message) => this.send(connId, message),
       disconnect: (connId) => this.disconnect(connId),
     });
-    if (envelope && envelope.room) this.authority.restore(envelope.room);
+    if (envelope && envelope.room) {
+      this.authority.restore(envelope.room);
+      if (!envelope.room.started) {
+        for (const seat of envelope.room.seats || []) if (seat.token) this.scheduleLobbyRelease(seat.token);
+      }
+    }
   }
 
   enqueue(task) {
@@ -106,12 +142,13 @@ class RoomSession {
 
   async handle(connId, message) {
     if (message.t === 'join') {
-      const knownToken = typeof message.token === 'string' && this.authority.seats.some((seat) => seat.token === message.token);
+      const presentedToken = message.token;
       message = {
         t: 'join',
         name: normalizeName(message.name),
-        token: knownToken ? message.token : randomToken(),
+        token: this.authority.resolveJoinToken(message.token, randomToken),
       };
+      if (message.token === presentedToken) this.cancelLobbyRelease(message.token);
     }
     this.authority.now = Date.now();
     this.authority.onMessage(connId, message);
@@ -121,23 +158,39 @@ class RoomSession {
 
   async detached(connId) {
     this.sockets.delete(connId);
-    const lobbyChanged = !this.authority.started && this.authority.conns[connId] != null;
-    this.authority.leave(connId);
-    if (lobbyChanged) await this.persist();
+    const reconnectToken = this.authority.leave(connId);
+    if (reconnectToken) this.scheduleLobbyRelease(reconnectToken);
     this.scheduleTimeout();
+  }
+
+  cancelLobbyRelease(token) {
+    const timer = this.lobbyReleaseTimers.get(token);
+    if (timer) clearTimeout(timer);
+    this.lobbyReleaseTimers.delete(token);
+  }
+
+  scheduleLobbyRelease(token) {
+    this.cancelLobbyRelease(token);
+    const timer = setTimeout(() => {
+      this.lobbyReleaseTimers.delete(token);
+      void this.enqueue(async () => {
+        if (this.authority.releaseDisconnectedSeat(token)) await this.persist();
+      });
+    }, this.lobbyDisconnectGraceMs);
+    if (timer.unref) timer.unref();
+    this.lobbyReleaseTimers.set(token, timer);
   }
 
   scheduleTimeout() {
     if (this.turnTimer) clearTimeout(this.turnTimer);
     this.turnTimer = null;
-    if (!this.authority.started || !this.authority.G || this.authority.G.phase !== 'play') return;
-    if (!this.authority.seats.some((seat) => seat.connected)) return;
-    const dueIn = Math.max(0, this.authority.turnStartedAt + TURN_TIMEOUT_MS - Date.now());
+    const timeoutAt = this.authority.nextTimeoutAt();
+    if (timeoutAt == null) return;
+    const dueIn = Math.max(0, timeoutAt - Date.now());
     this.turnTimer = setTimeout(() => {
       this.turnTimer = null;
       void this.enqueue(async () => {
-        let plan = {};
-        try { plan = AI.chooseTurn(this.authority.G, { difficulty: 'hard' }) || {}; } catch (_) { }
+        const plan = (state) => AI.chooseTurn(state, { difficulty: 'hard' });
         if (this.authority.timeoutTurn(Date.now(), plan)) await this.persist();
         this.scheduleTimeout();
       });
@@ -148,6 +201,8 @@ class RoomSession {
   dispose() {
     if (this.turnTimer) clearTimeout(this.turnTimer);
     this.turnTimer = null;
+    for (const timer of this.lobbyReleaseTimers.values()) clearTimeout(timer);
+    this.lobbyReleaseTimers.clear();
   }
 
   async persist() {
@@ -168,23 +223,25 @@ function createRoomServer(options = {}) {
   const allowedOrigins = new Set(options.allowedOrigins || []);
   const sessions = new Map();
   const roomCreates = new Map();
+  const activeConnections = new Map();
   const roomTtlMs = options.roomTtlMs || 7 * 24 * 60 * 60 * 1000;
+  const sessionOptions = { lobbyDisconnectGraceMs: options.lobbyDisconnectGraceMs || 15000 };
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: MAX_MESSAGE_BYTES });
 
   async function sessionFor(code) {
     if (sessions.has(code)) return sessions.get(code);
     const envelope = await store.load(code);
     if (!envelope) return null;
-    const session = new RoomSession(code, store, envelope);
+    const session = new RoomSession(code, store, envelope, sessionOptions);
     sessions.set(code, session);
     return session;
   }
 
   async function createRoom() {
     for (let attempt = 0; attempt < 20; attempt++) {
-      const code = randomCode();
+      const code = randomRoomCode();
       if (sessions.has(code) || await store.load(code)) continue;
-      const session = new RoomSession(code, store, null);
+      const session = new RoomSession(code, store, null, sessionOptions);
       sessions.set(code, session);
       await session.persist();
       return code;
@@ -198,7 +255,7 @@ function createRoomServer(options = {}) {
     if (request.method === 'GET' && url.pathname === '/readyz') return json(response, 200, { ok: true });
     if (request.method === 'POST' && url.pathname === '/api/rooms') {
       if (!requestOriginAllowed(request, allowedOrigins)) return json(response, 403, { error: 'forbidden origin' });
-      const ip = String(request.headers['x-forwarded-for'] || request.socket.remoteAddress || '').split(',')[0].trim();
+      const ip = clientIp(request);
       const now = Date.now();
       let quota = roomCreates.get(ip);
       if (!quota || now - quota.startedAt >= 60 * 60 * 1000) quota = { startedAt: now, count: 0 };
@@ -228,7 +285,7 @@ function createRoomServer(options = {}) {
     void (async () => {
       const pathname = new URL(request.url, 'http://localhost').pathname;
       const match = pathname.match(ROOM_PATH);
-      if (!match || !requestOriginAllowed(request, allowedOrigins)) {
+      if (!match || !isRoomCode(match[1]) || !requestOriginAllowed(request, allowedOrigins)) {
         socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
         socket.destroy();
         return;
@@ -244,6 +301,12 @@ function createRoomServer(options = {}) {
         socket.destroy();
         return;
       }
+      request.clientIp = clientIp(request);
+      if ((activeConnections.get(request.clientIp) || 0) >= 20) {
+        socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(request, socket, head, (ws) => wss.emit('connection', ws, request, session));
     })().catch(() => socket.destroy());
   });
@@ -252,6 +315,8 @@ function createRoomServer(options = {}) {
     const connId = crypto.randomUUID();
     const rate = { startedAt: Date.now(), count: 0 };
     let lastActionSeq = 0;
+    const ip = request.clientIp || clientIp(request);
+    activeConnections.set(ip, (activeConnections.get(ip) || 0) + 1);
     session.attach(connId, socket);
     socket.on('message', (data, isBinary) => {
       if (isBinary || data.length > MAX_MESSAGE_BYTES) return socket.close(1009, 'message too large');
@@ -261,6 +326,10 @@ function createRoomServer(options = {}) {
       let message;
       try { message = JSON.parse(data.toString()); } catch (_) { return socket.close(1007, 'invalid json'); }
       if (!validMessage(message)) return socket.close(1008, 'invalid message');
+      if (message.t === 'ping') {
+        socket.send('{"t":"pong"}');
+        return;
+      }
       if (message.t === 'action') {
         if (message.seq <= lastActionSeq) {
           socket.send(JSON.stringify({ t: 'reject', reason: '重复或过期的操作', seq: message.seq }));
@@ -270,7 +339,11 @@ function createRoomServer(options = {}) {
       }
       void session.enqueue(() => session.handle(connId, message)).catch(() => socket.close(1011, 'server error'));
     });
-    socket.once('close', () => { void session.enqueue(() => session.detached(connId)); });
+    socket.once('close', () => {
+      const remaining = (activeConnections.get(ip) || 1) - 1;
+      if (remaining > 0) activeConnections.set(ip, remaining); else activeConnections.delete(ip);
+      void session.enqueue(() => session.detached(connId));
+    });
   });
 
   return {

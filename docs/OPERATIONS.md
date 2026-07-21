@@ -13,11 +13,11 @@ du -sh runtime/rooms
 
 ## 备份
 
-房间存储采用临时文件写入后原子重命名，同一时刻复制目录不会读到半写入 JSON。建议每天备份：
+房间存储采用临时文件写入后原子重命名，同一时刻复制目录不会读到半写入 JSON。部署包含每日 systemd timer；手工执行同一备份脚本：
 
 ```bash
-tar -C /opt/pokemon-splendor -czf /var/backups/pokemon-splendor-$(date +%F).tgz runtime/rooms
-find /var/backups -name 'pokemon-splendor-*.tgz' -mtime +7 -delete
+/opt/pokemon-splendor/deploy/backup.sh
+systemctl list-timers pokemon-splendor-backup.timer
 ```
 
 恢复前停止 `app` 容器，解压备份，再启动并检查 `/readyz`。

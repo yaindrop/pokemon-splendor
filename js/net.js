@@ -64,17 +64,19 @@
   function action(move) { send({ t: 'action', seq: ++seq, action: move }); }
   function start(opts) { send({ t: 'start', opts: opts || {} }); }
   function sync() { send({ t: 'sync' }); }
-  function close() { closedByUs = true; clearTimeout(reconnect); stopBeat(); if (ws) { try { ws.onclose = null; ws.close(); } catch (e) { } } ws = null; }
-  function leave() {
-    closedByUs = true; clearTimeout(reconnect); stopBeat(); send({ t: 'leave' });
+  function teardown(delay) {
+    closedByUs = true; clearTimeout(reconnect); stopBeat();
     const leaving = ws; ws = null;
-    setTimeout(() => { if (leaving) { try { leaving.onclose = null; leaving.close(); } catch (e) { } } }, 80);
+    const finish = () => { if (leaving) { try { leaving.onclose = null; leaving.close(); } catch (e) { } } };
+    if (delay) setTimeout(finish, delay); else finish();
   }
+  function close() { teardown(0); }
+  function leave() { send({ t: 'leave' }); teardown(80); }
   async function createRoom() {
     const response = await fetch('/api/rooms', { method: 'POST', headers: { accept: 'application/json' } });
     if (!response.ok) throw new Error('无法创建房间');
     const body = await response.json();
-    if (!body || !/^[A-Z2-9]{8}$/.test(body.code)) throw new Error('房间响应无效');
+    if (!body || typeof body.code !== 'string') throw new Error('房间响应无效');
     return body.code;
   }
 

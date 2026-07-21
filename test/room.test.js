@@ -281,11 +281,18 @@ test('leaving a lobby releases the seat and transfers host ownership', () => {
   assert.strictEqual(room.started, true, 'the transferred host can start');
 });
 
-test('a dropped lobby connection is removed so the lobby cannot be orphaned', () => {
+test('a dropped lobby seat is reclaimable, then removable after its reconnect grace', () => {
   const { room, last } = makeRoom();
   room.onMessage('cA', { t: 'join', name: 'A', token: 'tA' });
   room.onMessage('cB', { t: 'join', name: 'B', token: 'tB' });
-  room.leave('cA');
+  assert.strictEqual(room.leave('cA'), 'tA');
+
+  assert.strictEqual(room.seats.length, 2, 'seat is retained for a reconnect');
+  room.onMessage('cA2', { t: 'join', name: 'A', token: 'tA' });
+  assert.strictEqual(last('cA2', 'welcome').seat, 0);
+
+  assert.strictEqual(room.leave('cA2'), 'tA');
+  assert.strictEqual(room.releaseDisconnectedSeat('tA'), true);
 
   assert.strictEqual(room.seats.length, 1);
   assert.strictEqual(room.conns.cB, 0);

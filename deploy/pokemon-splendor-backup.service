@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up Pokémon Splendor room snapshots
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pokemon-splendor/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle

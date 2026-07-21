@@ -1,8 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
-
-const ROOM_CODE = /^[A-Z2-9]{6,16}$/;
+const { isRoomCode } = require('./room-code.js');
 
 class FileRoomStore {
   constructor(directory) {
@@ -17,7 +16,7 @@ class FileRoomStore {
   }
 
   _path(code) {
-    if (!ROOM_CODE.test(code)) throw new Error('invalid room code');
+    if (!isRoomCode(code)) throw new Error('invalid room code');
     return path.join(this.directory, code + '.json');
   }
 
@@ -55,7 +54,7 @@ class FileRoomStore {
     const expired = [];
     for (const file of files) {
       const code = file.endsWith('.json') ? file.slice(0, -5) : '';
-      if (!ROOM_CODE.test(code)) continue;
+      if (!isRoomCode(code)) continue;
       try {
         const snapshot = JSON.parse(await fs.readFile(path.join(this.directory, file), 'utf8'));
         if (Number(snapshot.updatedAt || 0) < cutoff) expired.push(code);
