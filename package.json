@@ -26,12 +26,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "python:sync": "uv sync --directory tools/training --all-groups",
     "python:check": "uv run --directory tools/training ruff format --check . && uv run --directory tools/training ruff check . && uv run --directory tools/training pytest",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm python:check && pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
     "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.7.0",

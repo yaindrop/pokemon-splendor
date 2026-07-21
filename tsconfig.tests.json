@@ -20,6 +20,7 @@
     }
   ],
   "include": [
+    "playwright.config.ts",
     "apps/**/*.test.ts",
     "apps/server/src/**/*.ts",
     "apps/web/src/net.ts",
