@@ -5,6 +5,7 @@ packages:
 allowBuilds:
   esbuild: true
 
+minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@typescript-eslint/eslint-plugin@8.65.0'
   - '@typescript-eslint/parser@8.65.0'
