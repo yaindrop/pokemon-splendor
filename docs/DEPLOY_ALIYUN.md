@@ -13,7 +13,7 @@
 ```bash
 git clone https://github.com/yaindrop/pokemon-splendor.git /opt/pokemon-splendor
 cd /opt/pokemon-splendor
-git switch feat/aliyun-multiplayer
+git switch main
 cp .env.example .env
 ```
 
@@ -65,7 +65,7 @@ systemctl enable --now pokemon-splendor-backup.timer
 /opt/pokemon-splendor/deploy/backup.sh
 cd /opt/pokemon-splendor
 git fetch origin
-git switch feat/aliyun-multiplayer
+git switch main
 git pull --ff-only
 docker compose up -d --build
 ```

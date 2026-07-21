@@ -27,6 +27,7 @@ pnpm check          # 格式、Lint、类型、测试、Python 检查与生产�
 pnpm typecheck      # TypeScript 项目引用增量检查
 pnpm test           # Vitest
 pnpm test:coverage  # 测试及覆盖率门禁
+pnpm test:e2e       # Playwright 浏览器交互回归
 pnpm build          # 构建全部 workspace
 pnpm python:sync    # 用 uv 同步训练工具环境
 ```
@@ -55,7 +56,7 @@ tools/
 deploy/             Caddy、备份脚本与 systemd timer
 ```
 
-前端继续使用原生 DOM 与 CSS；共享逻辑通过 workspace package 复用，不依赖浏览器全局变量。生产 TypeScript 开启 `strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes` 等严格选项，网络和持久化数据在不可信边界执行运行时校验。
+桌面交互全量使用 React 19 + Base UI：Base UI 负责语义、键盘交互、焦点管理和浮层行为，项目 CSS 只负责宝可梦璀璨宝石主题。`GameSession` 隔离本地与联机传输，Jotai 只承载跨树 UI 状态；共享规则经 workspace package 复用，不依赖浏览器全局变量。生产 TypeScript 开启 `strict`、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes` 等严格选项，网络和持久化数据在不可信边界执行运行时校验。
 
 ## 玩法概要
 
