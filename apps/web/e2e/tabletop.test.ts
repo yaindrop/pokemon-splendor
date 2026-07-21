@@ -81,4 +81,53 @@ test.describe('React + Base UI 牌桌', () => {
     await card.click();
     await expect(page.locator('#inspect-inner')).toBeVisible();
   });
+
+  test('两位训练家通过真实房间同步回合', async ({ browser, page }, testInfo) => {
+    const baseUrl = testInfo.project.use.baseURL;
+    if (!baseUrl) throw new Error('Playwright 必须配置 baseURL');
+    const guestContext = await browser.newContext();
+    const guest = await guestContext.newPage();
+    try {
+      await page.goto('/');
+      await page.getByRole('button', { name: /和朋友联机/ }).click();
+      await page.getByLabel('训练家名字').fill('小智');
+      await page.getByRole('button', { name: '创建联机房间' }).click();
+      await expect(page.getByText('房间码')).toBeVisible();
+      const roomCode = await page.locator('.lobby-code b').textContent();
+      if (!roomCode) throw new Error('房主未获得房间码');
+
+      await guest.goto(baseUrl);
+      await guest.getByRole('button', { name: /和朋友联机/ }).click();
+      await guest.getByLabel('训练家名字').fill('小霞');
+      await guest.getByPlaceholder('输入房间码').fill(roomCode);
+      await guest.getByRole('button', { name: '加入', exact: true }).click();
+
+      await expect(page.getByText(/2\. 小霞/)).toBeVisible();
+      await expect(guest.getByText(/1\. 小智/)).toBeVisible();
+      await page.getByRole('button', { name: '开始游戏' }).click();
+
+      await expect(page.locator('#game')).toBeVisible();
+      await expect(guest.locator('#game')).toBeVisible();
+
+      await page.locator('[data-supply-color="red"]').click();
+      await page.locator('[data-supply-color="blue"]').click();
+      await page.locator('[data-supply-color="black"]').click();
+      await page.getByRole('button', { name: '确认领取精灵球' }).click();
+
+      await expect(
+        guest.locator('.player[data-player="0"] [data-token-color="red"] .trainer-token-count'),
+      ).toHaveText('1');
+
+      await guest.locator('[data-supply-color="red"]').click();
+      await guest.locator('[data-supply-color="blue"]').click();
+      await guest.locator('[data-supply-color="black"]').click();
+      await guest.getByRole('button', { name: '确认领取精灵球' }).click();
+
+      await expect(
+        page.locator('.player[data-player="1"] [data-token-color="red"] .trainer-token-count'),
+      ).toHaveText('1');
+    } finally {
+      await guestContext.close();
+    }
+  });
 });

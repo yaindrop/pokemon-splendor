@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const gameServerUrl = process.env['GAME_SERVER_URL'] ?? 'http://127.0.0.1:3000';
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -8,11 +10,11 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      '/api': 'http://127.0.0.1:3000',
-      '/healthz': 'http://127.0.0.1:3000',
-      '/readyz': 'http://127.0.0.1:3000',
+      '/api': gameServerUrl,
+      '/healthz': gameServerUrl,
+      '/readyz': gameServerUrl,
       '/room': {
-        target: 'ws://127.0.0.1:3000',
+        target: gameServerUrl,
         ws: true,
       },
     },
