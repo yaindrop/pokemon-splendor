@@ -2,6 +2,7 @@ import { AlertDialog } from '@base-ui/react/alert-dialog';
 import { Provider, useAtomValue } from 'jotai';
 import type { ReactElement } from 'react';
 import { GameApp } from './GameApp.js';
+import { AppErrorBoundary } from './AppErrorBoundary.js';
 import { FlightLayer } from './game/motion.js';
 import { settleMasterBallConfirmation } from './masterBallConfirmation.js';
 import { masterBallConfirmationAtom, uiStore } from './uiStore.js';
@@ -9,9 +10,11 @@ import { masterBallConfirmationAtom, uiStore } from './uiStore.js';
 export function AppOverlays(): ReactElement {
   return (
     <Provider store={uiStore}>
-      <GameApp />
-      <FlightLayer />
-      <MasterBallConfirmationOverlay />
+      <AppErrorBoundary>
+        <GameApp />
+        <FlightLayer />
+        <MasterBallConfirmationOverlay />
+      </AppErrorBoundary>
     </Provider>
   );
 }
