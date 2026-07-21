@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+runtime
+.wrangler
+apps/web/public/assets
+packages/game-core/data
+packages/game-core/test/*_frozen.js
+packages/game-core/test/ai_v1.js
+packages/game-core/test/vsearch_v1_frozen.js
+tools/training

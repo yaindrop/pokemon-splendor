@@ -1,17 +1,47 @@
 {
   "name": "pokemon-splendor",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Server-authoritative online Pokémon Splendor",
+  "description": "Server-authoritative online Pokémon Splendor monorepo",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "engines": {
-    "node": ">=24"
+    "node": ">=24.18.0 <25",
+    "pnpm": ">=11.15.1 <12"
   },
+  "packageManager": "pnpm@11.15.1",
   "scripts": {
-    "start": "node server/index.js",
-    "test": "node test/engine.test.js && node test/room.test.js && node test/server.test.js && node test/net.test.js && node test/megas.test.js && node test/pokemart.test.js",
-    "test:ai": "node test/ai.test.js"
+    "dev": "pnpm --parallel --filter @pokemon-splendor/web --filter @pokemon-splendor/server dev",
+    "dev:web": "pnpm --filter @pokemon-splendor/web dev",
+    "dev:server": "pnpm --filter @pokemon-splendor/server dev",
+    "build": "pnpm --recursive build",
+    "start": "pnpm --filter @pokemon-splendor/server start",
+    "typecheck": "tsc --build --pretty false",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "python:sync": "uv sync --directory tools/training --all-groups",
+    "python:check": "uv run --directory tools/training ruff format --check . && uv run --directory tools/training ruff check . && uv run --directory tools/training pytest",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm python:check && pnpm build"
   },
-  "dependencies": {
-    "ws": "8.21.1"
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.7.0",
+    "eslint-config-prettier": "10.1.8",
+    "globals": "17.7.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vite": "8.1.5",
+    "vitest": "4.1.10"
   }
 }

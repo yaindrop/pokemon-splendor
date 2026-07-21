@@ -1,0 +1,18 @@
+{
+  "name": "@pokemon-splendor/game-core",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "files": [
+    "dist"
+  ]
+}

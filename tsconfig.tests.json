@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.tests.tsbuildinfo",
+    "types": ["node", "vitest/globals"]
+  },
+  "references": [
+    {
+      "path": "./packages/game-core"
+    },
+    {
+      "path": "./packages/game-data"
+    },
+    {
+      "path": "./packages/protocol"
+    }
+  ],
+  "include": ["apps/**/*.test.ts", "apps/web/src/net.ts", "packages/**/*.test.ts"]
+}

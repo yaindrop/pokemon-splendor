@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/game-core"
+    },
+    {
+      "path": "./packages/game-data"
+    },
+    {
+      "path": "./packages/protocol"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./apps/server"
+    },
+    {
+      "path": "./tsconfig.tests.json"
+    }
+  ]
+}

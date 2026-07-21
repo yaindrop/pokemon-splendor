@@ -1,0 +1,32 @@
+[project]
+name = "pokemon-splendor-training"
+version = "0.1.0"
+description = "Offline training and evaluation tools for Pokémon Splendor AI"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "numpy",
+  "torch",
+]
+
+[dependency-groups]
+dev = [
+  "pytest",
+  "ruff",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.11.30"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "RUF002"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+pythonpath = ["src"]
+testpaths = ["tests"]

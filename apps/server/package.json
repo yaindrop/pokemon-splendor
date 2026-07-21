@@ -1,0 +1,23 @@
+{
+  "name": "@pokemon-splendor/server",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --build",
+    "start": "node dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@pokemon-splendor/game-core": "workspace:*",
+    "@pokemon-splendor/game-data": "workspace:*",
+    "@pokemon-splendor/protocol": "workspace:*",
+    "ws": "8.21.1"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
+  }
+}

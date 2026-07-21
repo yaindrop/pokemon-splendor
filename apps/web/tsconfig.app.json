@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.app.tsbuildinfo",
+    "types": ["vite/client"]
+  },
+  "references": [
+    {
+      "path": "../../packages/game-core"
+    },
+    {
+      "path": "../../packages/game-data"
+    },
+    {
+      "path": "../../packages/protocol"
+    }
+  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/ai.worker.ts"]
+}

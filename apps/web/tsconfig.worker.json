@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.worker.tsbuildinfo",
+    "types": []
+  },
+  "references": [
+    {
+      "path": "../../packages/game-core"
+    },
+    {
+      "path": "../../packages/game-data"
+    }
+  ],
+  "include": ["src/ai.worker.ts"]
+}
