@@ -1,0 +1,293 @@
+/* ---------- players ---------- */
+#players {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 10px;
+  padding: 0 2px 10px;
+}
+.player {
+  background: linear-gradient(145deg, rgba(37, 44, 99, 0.96), rgba(25, 31, 76, 0.96));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 11px 13px;
+  position: relative;
+  transition: 0.15s;
+  min-height: 174px;
+}
+.player.active {
+  border-color: var(--gold);
+  box-shadow:
+    0 0 0 2px rgba(255, 213, 74, 0.45),
+    var(--shadow);
+}
+.player.ai .pname::after {
+  content: ' 🤖';
+}
+.player-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pavatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  flex: none;
+  background-size: cover;
+  background-position: center;
+}
+.player-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pname {
+  font-weight: 900;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player-me {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 7px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #295fbd;
+  border: 1px solid rgba(142, 220, 255, 0.65);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.2;
+  vertical-align: 2px;
+  box-shadow: 0 2px 8px rgba(18, 66, 154, 0.28);
+}
+.player-turn-status {
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 213, 74, 0.12);
+  border: 1px solid rgba(255, 213, 74, 0.45);
+  color: #ffe66a;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player.active:not(.mine) .player-turn-status {
+  background: rgba(142, 220, 255, 0.1);
+  border-color: rgba(142, 220, 255, 0.35);
+  color: #a9e8ff;
+}
+.player.active.ai .player-turn-status {
+  background: rgba(216, 181, 255, 0.1);
+  border-color: rgba(216, 181, 255, 0.4);
+  color: #dfc2ff;
+}
+.pscore {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--gold);
+  line-height: 1;
+}
+.pscore small {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+/* running total follows the six token types as a same-size circular resource slot */
+.ptokens {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: 12px 19px;
+  place-content: center;
+  column-gap: 1px;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 42% 32%, rgba(255, 255, 255, 0.09), transparent 34%), #11163a;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  padding: 0;
+  line-height: 1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 10px rgba(4, 7, 25, 0.24);
+}
+.ptokens .pt-lbl {
+  grid-column: 1/-1;
+  align-self: start;
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.ptokens strong {
+  align-self: end;
+  font-size: 17px;
+  font-weight: 900;
+}
+.ptokens small {
+  align-self: end;
+  padding-bottom: 1px;
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.ptokens.full {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.ptokens.full small {
+  color: var(--gold);
+}
+.ptokens.over {
+  border-color: var(--bad);
+  color: var(--bad);
+  box-shadow: 0 0 0 1px var(--bad);
+}
+.ptokens.over small {
+  color: var(--bad);
+}
+.player-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.player-assets {
+  flex: 1;
+  min-width: 0;
+}
+.pstats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 3px 0 20px 2px;
+}
+.trainer-token {
+  --supply-accent: 74, 112, 214;
+  width: 52px;
+  height: 52px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 32%, rgba(255, 255, 255, 0.1), transparent 34%),
+    radial-gradient(circle, rgba(var(--supply-accent), 0.22), #101536 72%);
+  border: 2px solid rgba(var(--supply-accent), 0.58);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 4px 10px rgba(4, 7, 25, 0.28);
+}
+.trainer-token[data-token-color='red'] {
+  --supply-accent: 227, 53, 13;
+}
+.trainer-token[data-token-color='blue'] {
+  --supply-accent: 47, 111, 214;
+}
+.trainer-token[data-token-color='black'] {
+  --supply-accent: 145, 151, 166;
+}
+.trainer-token[data-token-color='pink'] {
+  --supply-accent: 240, 111, 160;
+}
+.trainer-token[data-token-color='yellow'] {
+  --supply-accent: 244, 192, 37;
+}
+.trainer-token[data-token-color='purple'] {
+  --supply-accent: 163, 117, 231;
+}
+.trainer-token[data-token-color='mega'] {
+  --supply-accent: 244, 192, 37;
+}
+.trainer-token .ball {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-size: cover;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.42));
+}
+.trainer-token .ball.mega-token {
+  filter: none;
+}
+.trainer-token-count {
+  position: absolute;
+  z-index: 2;
+  top: -5px;
+  right: -4px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #090d29;
+  border: 2px solid rgba(var(--supply-accent), 0.82);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.trainer-token-bonus {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  min-width: 28px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #113b2c;
+  border: 2px solid #17204e;
+  color: #72efa4;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+.pcards {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.color-stack {
+  position: relative;
+}
+.color-stack .ministack {
+  display: flex;
+  flex-direction: column;
+}
+.mini-card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid #000;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.mini-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mini-card.stacked {
+  margin-top: calc(18px - var(--card-h));
+}

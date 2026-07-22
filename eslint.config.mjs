@@ -70,7 +70,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/server/**/*.ts', 'packages/game-core/**/*.ts', '*.config.ts'],
+    files: ['apps/server/**/*.ts', 'packages/game-core/**/*.ts', 'tools/*.mjs', '*.config.ts'],
     languageOptions: {
       globals: globals.node,
     },

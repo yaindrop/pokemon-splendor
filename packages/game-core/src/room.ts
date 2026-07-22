@@ -1,53 +1,27 @@
-/* =====================================================================
- * 璀璨宝石：宝可梦  —  online Room authority (pure, transport-agnostic)
- * ---------------------------------------------------------------------
- * Holds the canonical game state for ONE online room and turns inbound
- * player messages into outbound (per-player) messages. The SAME class runs
- * behind the Node WebSocket adapter and in headless tests — only the transport
- * differs. No WebSocket / DOM / storage code lives here, so it is unit-testable
- * through the same interface used in production (test/room.test.js).
- *
- * It injects a `send(connId, msg)` callback (the transport) and never reaches
- * out itself. Server-authoritative: every move is validated with the engine's
- * applyAction (ownership-guarded by seat) and each client only ever receives
- * `redactFor(G, seat)` — so hidden info (deck order, opponents' reserves) never
- * leaves the authority.
- *
- * Identity model (so reconnection works): a live transport connection is a
- * `connId` (ephemeral — a new WebSocket gets a new one). A PLAYER is a stable
- * `token` the client stores locally; a seat is bound to a token, so a new
- * connection presenting the same token reclaims its seat (and hidden hand).
- * Host = seat 0 (the first to join) — reconnect-safe, no connId tracking.
- *
- * Wire protocol (JSON):
- *   client → room:  {t:'join', name, token}      join / reclaim a seat by token
- *                   {t:'start', opts}            host (seat 0) starts the game
- *                   {t:'action', seq, action}    a move (action = engine {type,...})
- *                   {t:'sync'}                   resend my current redacted state
- *   room → client:  {t:'welcome', connId, seat, host}
- *                   {t:'roster', players:[{seat,name,connected}], hostSeat, started}
- *                   {t:'state', seq, state}      redacted snapshot for this viewer
- *                   {t:'reject', reason, seq}
- *                   {t:'over', winner}
- * ===================================================================== */
+/* Server-authoritative, transport-agnostic room state machine.
+ * Stable player tokens reclaim seats across ephemeral WebSocket connections;
+ * every outbound game state is redacted for its recipient. */
 import E from './engine.js';
-import type { RoomClientMessage, RoomOptions, RoomServerMessage, RoomSnapshot } from './api.js';
-import type { Card, GameAction, GameState, TurnPlan } from './types.js';
-
-type Seat = {
-  token: string | null;
-  name: string;
-  connId: string | null;
-  connected: boolean;
-};
-
-type UndoVote = { requesterSeat: number; approvals: number[] };
-type SerializedGameState = Omit<GameState, 'cardDB' | 'byId' | 'megaDB' | 'pokemartDB'>;
-type StartOptions = Extract<RoomClientMessage, { readonly t: 'start' }>['opts'];
-type ActionMessage = Extract<RoomClientMessage, { readonly t: 'action' }>;
-type TakeoverPlan = Pick<TurnPlan, 'action' | 'discards' | 'evolution' | 'megaEvolution'>;
-type RoomInboundMessage =
-  RoomClientMessage | { readonly t: 'takeover'; readonly plan?: Partial<TakeoverPlan> };
+import type { RoomOptions, RoomServerMessage, RoomSnapshot } from './api.js';
+import type { Card, GameAction, GameState } from './types.js';
+import {
+  joinRoom,
+  leaveSeat,
+  rebindConnection,
+  releaseDisconnectedSeat,
+  resolveJoinToken,
+} from './room-connections.js';
+import { dispatchRoomMessage } from './room-message-dispatch.js';
+import { reattachG, restoreRoom, serializeG, snapshotRoom } from './room-snapshot.js';
+import type {
+  ActionMessage,
+  RoomInboundMessage,
+  Seat,
+  SerializedGameState,
+  StartOptions,
+  TakeoverPlan,
+  UndoVote,
+} from './room-types.js';
 
 // Optional idle/disconnect takeover. New rooms default to OFF; these bounded
 // choices keep room timers predictable and match the creation UI.
@@ -55,22 +29,6 @@ const TURN_TIMEOUT_MS = 180000; // legacy default for snapshots made before this
 const TURN_TIMEOUT_OPTIONS = [60000, 180000, 300000, 600000] as const;
 const isTurnTimeoutMs = (value: unknown): value is number =>
   typeof value === 'number' && TURN_TIMEOUT_OPTIONS.some((option) => option === value);
-
-// strip the shared static card refs so a room state is pure data we can persist
-function serializeG(s: GameState): SerializedGameState {
-  const { cardDB: _cardDB, byId: _byId, megaDB: _megaDB, pokemartDB: _pokemartDB, ...dyn } = s;
-  return structuredClone(dyn);
-}
-function reattachG(
-  dyn: SerializedGameState,
-  DB: GameState['cardDB'],
-  megaDB: GameState['megaDB'] = [],
-  pokemartDB: GameState['pokemartDB'] = [],
-): GameState {
-  const byId: GameState['byId'] = {};
-  for (const card of [...DB, ...megaDB, ...pokemartDB]) byId[card.id] = card;
-  return { ...structuredClone(dyn), cardDB: DB, megaDB, pokemartDB, byId };
-}
 
 class Room {
   readonly DB: readonly Card[];
@@ -111,51 +69,11 @@ class Room {
 
   // ----------------------------- connections -----------------------------
   join(connId: string, name = '', token = ''): number {
-    // reconnect: a seat already bound to this stable token
-    let seat = token != null ? this.seats.findIndex((s) => s.token === token) : -1;
-    if (seat < 0) {
-      // a new player
-      if (this.started)
-        seat = -1; // can't take a seat mid-game → spectator
-      else {
-        seat = this.seats.findIndex((s) => s.token == null); // a freed seat
-        if (seat < 0 && this.seats.length < this.maxSeats) {
-          // else open a new one
-          seat = this.seats.length;
-          this.seats.push({ token: null, name: '', connId: null, connected: false });
-        }
-      }
-    }
-    if (seat >= 0) {
-      const st = this.seats[seat];
-      if (!st) throw new Error(`未知房间席位：${seat}`);
-      const oldConnId = st.connId;
-      if (oldConnId && oldConnId !== connId) {
-        delete this.conns[oldConnId];
-        this.disconnect(oldConnId);
-      }
-      st.token = token || st.token || 'seat' + seat;
-      st.connId = connId;
-      st.name = name || st.name || '训练家 ' + (seat + 1);
-      st.connected = true;
-      this.conns[connId] = seat;
-    } else {
-      this.conns[connId] = -1; // spectator
-    }
-    this._welcome(connId);
-    this._roster();
-    if (this.started) this._stateTo(connId); // reconnect → resend snapshot
-    return this.conns[connId];
+    return joinRoom(this, connId, name, token);
   }
 
   resolveJoinToken(presentedToken: string | undefined, mintToken: () => string): string {
-    if (
-      typeof presentedToken === 'string' &&
-      this.seats.some((seat) => seat.token === presentedToken)
-    ) {
-      return presentedToken;
-    }
-    return mintToken();
+    return resolveJoinToken(this, presentedToken, mintToken);
   }
 
   leave(connId: string): string | null {
@@ -174,29 +92,11 @@ class Room {
   }
 
   leaveSeat(connId: string): boolean | string | null {
-    const seat = this.conns[connId];
-    if (seat == null || seat < 0) {
-      delete this.conns[connId];
-      return false;
-    }
-    if (this.started) return this.leave(connId);
-    this.seats.splice(seat, 1);
-    delete this.conns[connId];
-    this._reindexConnections();
-    this._roster();
-    return true;
+    return leaveSeat(this, connId);
   }
 
   releaseDisconnectedSeat(token: string): boolean {
-    if (this.started) return false;
-    const seat = this.seats.findIndex(
-      (candidate) => candidate.token === token && !candidate.connected,
-    );
-    if (seat < 0) return false;
-    this.seats.splice(seat, 1);
-    this._reindexConnections();
-    this._roster();
-    return true;
+    return releaseDisconnectedSeat(this, token);
   }
 
   _welcome(connId: string): void {
@@ -224,48 +124,12 @@ class Room {
   // when the client itself re-sends join/sync on a real reconnect). Works even
   // before the game has started, so a lobby that hibernated isn't bricked.
   rebind(connId: string, token: string | undefined): number {
-    const seat = token != null ? this.seats.findIndex((s) => s.token === token) : -1;
-    const playerSeat = seat >= 0 ? this.seats[seat] : undefined;
-    if (playerSeat) {
-      playerSeat.connId = connId;
-      playerSeat.connected = true;
-      this.conns[connId] = seat;
-    } else this.conns[connId] = -1;
-    return this.conns[connId];
+    return rebindConnection(this, connId, token);
   }
 
   // ------------------------------- messages ------------------------------
   onMessage(connId: string, msg: RoomInboundMessage): unknown {
-    switch (msg.t) {
-      case 'join':
-        return this.join(connId, msg.name ?? '', msg.token ?? '');
-      case 'start': {
-        this._start(connId, msg.opts);
-        return;
-      }
-      case 'action': {
-        this._action(connId, msg);
-        return;
-      }
-      case 'undo-request': {
-        this._requestUndo(connId);
-        return;
-      }
-      case 'undo-vote':
-        return this._voteUndo(connId, msg.approve);
-      case 'takeover':
-        return this._takeover(connId, msg);
-      case 'leave':
-        return this.leaveSeat(connId);
-      case 'sync': {
-        this._stateTo(connId);
-        return;
-      }
-      case 'ping': {
-        this.send(connId, { t: 'pong' });
-        return;
-      }
-    }
+    return dispatchRoomMessage(this, connId, msg);
   }
 
   _start(connId: string, opts: StartOptions = {}): void {
@@ -600,45 +464,10 @@ class Room {
   // — clients reconnect with their token and re-sync. Seats keep their token,
   // so reconnecting players reclaim their seat and hidden hand.
   snapshot(): RoomSnapshot {
-    const seats: RoomSnapshot['seats'] = this.seats.map((s) => ({
-      token: s.token,
-      name: s.name,
-      connId: null,
-      connected: false,
-    }));
-    return {
-      seq: this.seq,
-      started: this.started,
-      seats,
-      turnStartedAt: this.turnStartedAt,
-      turnTimeoutMs: this.turnTimeoutMs,
-      g: this.G ? serializeG(this.G) : null,
-      undoHistory: this.undoHistory.slice(-20),
-    };
+    return snapshotRoom(this);
   }
   restore(snap: RoomSnapshot): void {
-    this.seq = snap.seq || 0;
-    this.started = !!snap.started;
-    this.turnStartedAt = snap.turnStartedAt || 0;
-    // Old persisted games had an implicit 3-minute timer and no field; preserve
-    // their live rule while all newly-created rooms default to no timeout.
-    this.turnTimeoutMs = Object.prototype.hasOwnProperty.call(snap, 'turnTimeoutMs')
-      ? isTurnTimeoutMs(snap.turnTimeoutMs)
-        ? snap.turnTimeoutMs
-        : null
-      : this.started
-        ? TURN_TIMEOUT_MS
-        : null;
-    this.seats = (snap.seats || []).map((s) => ({
-      token: s.token,
-      name: s.name,
-      connId: null,
-      connected: false,
-    }));
-    this.conns = {};
-    this.G = snap.g ? reattachG(snap.g, this.DB, this.megaDB, this.pokemartDB) : null;
-    this.undoHistory = snap.undoHistory.slice(-20);
-    this.undoVote = null;
+    restoreRoom(this, snap, TURN_TIMEOUT_MS, isTurnTimeoutMs);
   }
 }
 

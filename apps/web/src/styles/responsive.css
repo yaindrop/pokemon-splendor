@@ -1,0 +1,345 @@
+/* ============================================================
+   MOBILE / NARROW: board → supply/actions → actual player panels
+   ============================================================ */
+@media (max-width: 860px) {
+  .mode-grid {
+    grid-template-columns: 1fr;
+  }
+  .mode-card {
+    min-height: 180px;
+    padding: 18px;
+  }
+  .mode-eyebrow {
+    margin-top: 14px;
+  }
+  .mode-card strong {
+    font-size: 21px;
+  }
+  .setup-card.setup-hub {
+    max-width: 560px;
+  }
+  .config-head {
+    grid-template-columns: 84px 1fr 84px;
+  }
+  #game {
+    display: flex;
+    flex-direction: column;
+    min-height: var(--app-h);
+    padding-bottom: calc(var(--sa-b) + 6px);
+  }
+  #game-head {
+    order: 0;
+  }
+  #topbar {
+    min-height: 46px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+    padding: calc(4px + var(--sa-t)) max(8px, var(--sa-r)) 4px max(8px, var(--sa-l));
+  }
+  .brand-mini {
+    font-size: 13px;
+  }
+  .topbar-action {
+    width: 36px;
+    padding: 0;
+  }
+  .topbar-action span:last-child {
+    display: none;
+  }
+  .topbar-right {
+    gap: 4px;
+  }
+  .idle-bar span {
+    font-size: 9px;
+    padding: 6px 7px;
+  }
+  #board {
+    order: 1;
+    padding: 8px max(6px, var(--sa-r)) 0 max(6px, var(--sa-l));
+  }
+  #players {
+    order: 3;
+    padding: 4px max(8px, var(--sa-r)) 12px max(8px, var(--sa-l));
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .player-body {
+    display: block;
+  }
+  .reserve-zone {
+    margin: 8px 0 0;
+    border-left: 0;
+    border-top: 1px dashed var(--line);
+    padding: 6px 0 0;
+  }
+  #log {
+    top: calc(50px + var(--sa-t));
+    left: max(8px, var(--sa-l));
+    right: max(8px, var(--sa-r));
+    width: auto;
+    height: min(620px, calc(100svh - 62px - var(--sa-t)));
+    max-height: none;
+    margin: 0;
+  }
+
+  /* supply and contextual actions stay in document flow between table and trainers */
+  #controls {
+    position: static;
+    z-index: auto;
+    order: 2;
+    gap: 6px;
+    padding: 8px max(8px, var(--sa-r)) 4px max(8px, var(--sa-l));
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    max-height: none;
+    overflow: visible;
+  }
+  #controls .panel {
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  /* same physical-token controls, laid horizontally below the table */
+  #supply {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+  }
+  #supply::-webkit-scrollbar {
+    height: 0;
+  }
+  #supply .panel-title {
+    position: sticky;
+    left: 0;
+    z-index: 14;
+    display: flex;
+    flex: 0 0 92px;
+    width: 92px;
+    height: 70px;
+    min-height: 70px;
+    margin: 0;
+    padding: 0 6px;
+    order: -1;
+    align-self: stretch;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 4px;
+    font-size: 11px;
+    background: linear-gradient(90deg, var(--panel) 82%, rgba(29, 35, 80, 0.88));
+    border-radius: 8px;
+  }
+  #supply.has-pick .panel-title {
+    flex-basis: 92px;
+    width: 92px;
+    align-items: stretch;
+  }
+  #supply.has-pick .supply-quick-actions {
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .supply-row {
+    flex: 0 0 70px;
+    width: 70px;
+    height: 70px;
+    scroll-snap-align: start;
+    border-radius: 50%;
+  }
+  .supply-stack-token:nth-child(1) {
+    transform: translateY(4px);
+  }
+  .supply-stack-token:nth-child(2) {
+    transform: translateY(8px);
+  }
+  .supply-stack-token:nth-child(3) {
+    transform: translateY(12px);
+  }
+  .supply-row .ball {
+    width: 50px;
+    height: 50px;
+  }
+  .supply-row .cnt {
+    top: -2px;
+    right: -2px;
+    font-size: 11px;
+    min-width: 23px;
+    height: 23px;
+    border-radius: 50%;
+  }
+  .supply-row .picked-n {
+    left: 50%;
+    bottom: -4px;
+    font-size: 8px;
+    padding: 1px 5px;
+  }
+  .supply-tooltip {
+    left: 50%;
+    top: auto;
+    bottom: calc(100% + 9px);
+    transform: translate(-50%, 5px);
+  }
+  .supply-tooltip::before {
+    right: auto;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-color: rgba(var(--supply-accent), 0.7) transparent transparent;
+  }
+  .supply-row:hover .supply-tooltip,
+  .supply-row:focus-visible .supply-tooltip {
+    transform: translate(-50%, 0);
+  }
+  .supply-row.mega-row {
+    flex-basis: 70px;
+    width: 70px;
+    margin: 0 0 0 4px;
+  }
+  #action-bar {
+    min-height: 0;
+  }
+  .act-hint {
+    margin-bottom: 6px;
+  }
+
+  /* board rows scroll horizontally instead of wrapping */
+  .tier-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 8px;
+    padding: 6px;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+  }
+  .tier-row::-webkit-scrollbar {
+    height: 0;
+  }
+  .tier-label {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    width: auto;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: var(--panel);
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+  }
+  .card-strip {
+    flex-wrap: nowrap;
+  }
+  .card,
+  .deck-pile {
+    scroll-snap-align: start;
+  }
+
+  #rotate-hint {
+    top: auto;
+    bottom: calc(var(--sa-b) + 10px);
+  }
+}
+
+@media (max-width: 460px) {
+  .setup-card.setup-hub {
+    padding: 18px 14px;
+  }
+  .tagline {
+    margin-bottom: 16px;
+  }
+  .home-extras {
+    gap: 6px;
+  }
+  .home-extras .ghost {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  .timeout-duration {
+    grid-template-columns: 1fr 120px;
+  }
+  .join-row {
+    grid-template-columns: 1fr;
+  }
+  .join-row button {
+    width: 100%;
+  }
+  .idle-bar span {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* compact-height desktops: preserve a complete table + trainer panels in one view */
+@media (min-width: 861px) and (max-height: 920px) {
+  :root {
+    --card-w: clamp(74px, 10.2vh, 94px);
+    --supply-size: clamp(65px, calc(9.07vh - 1px), 83px);
+  }
+  .player {
+    min-height: 162px;
+    padding: 9px 11px;
+  }
+  .player-head {
+    margin-bottom: 6px;
+  }
+  .pavatar {
+    width: 34px;
+    height: 34px;
+  }
+  .pstats {
+    gap: 7px;
+    margin-bottom: 16px;
+  }
+  .trainer-token {
+    width: 48px;
+    height: 48px;
+  }
+  .trainer-token .ball {
+    width: 37px;
+    height: 37px;
+  }
+  .ptokens {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* very small phones: shrink cards a touch more, 1 player per row */
+@media (max-width: 380px) {
+  :root {
+    --card-w: clamp(60px, 17vw, 72px);
+  }
+  #players {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* landscape phone: use available width without creating empty player tracks */
+@media (max-width: 860px) and (orientation: landscape) {
+  #players {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  }
+}
+
+/* accessibility: respect reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

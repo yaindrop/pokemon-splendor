@@ -1,0 +1,134 @@
+/* ===================== Pokémon Splendor — styles ===================== */
+:root {
+  --red: #e3350d;
+  --blue: #2f6fd6;
+  --black: #3a3d44;
+  --pink: #f06fa0;
+  --yellow: #f4c025;
+  --purple: #7a4fc0;
+  --bg0: #0e1230;
+  --bg1: #171c44;
+  --panel: #1d2350;
+  --panel2: #252c63;
+  --line: #3a4290;
+  --ink: #eef1ff;
+  --muted: #a9b0e0;
+  --gold: #ffd54a;
+  --good: #46d17a;
+  --bad: #ff5d6c;
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --radius: 14px;
+  /* fluid card / token sizes — scale smoothly with viewport */
+  --card-w: clamp(66px, 9vw, 92px);
+  --card-h: calc(var(--card-w) * 4 / 3);
+  --ball: clamp(30px, 7.4vw, 36px);
+  /* safe-area insets (notch / home indicator); resolve to 0 on non-notched devices */
+  --sa-t: env(safe-area-inset-top, 0px);
+  --sa-r: env(safe-area-inset-right, 0px);
+  --sa-b: env(safe-area-inset-bottom, 0px);
+  --sa-l: env(safe-area-inset-left, 0px);
+  --app-h: 100vh;
+  --app-h: 100svh; /* small-viewport height: fits on first paint, no jump */
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+body {
+  font-family:
+    'PingFang SC',
+    'Microsoft YaHei',
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 15% -10%, #2a3296 0, transparent 55%),
+    radial-gradient(1000px 700px at 110% 10%, #6a2f86 0, transparent 50%),
+    linear-gradient(160deg, var(--bg0), var(--bg1));
+  background-attachment: fixed;
+  overflow-x: hidden;
+  overscroll-behavior: none; /* no pull-to-refresh / rubber-band */
+  -webkit-tap-highlight-color: transparent;
+}
+.screen {
+  min-height: 100vh;
+  min-height: var(--app-h);
+}
+.hidden {
+  display: none !important;
+}
+
+/* touch hygiene: instant taps, no accidental text-select / long-press callout on controls */
+button,
+.seg button,
+.supply-row,
+.card,
+.deck-pile,
+.mini-card,
+.ball,
+.chip,
+.evo-option,
+.seat .pid,
+#undo-btn,
+.exp-toggle {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* ---------- buttons ---------- */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 10px 14px;
+  min-height: 40px;
+  transition:
+    0.15s transform,
+    0.15s background,
+    0.15s box-shadow;
+}
+button:active {
+  transform: translateY(1px);
+}
+.primary {
+  background: linear-gradient(180deg, #ffd54a, #f6b800);
+  color: #3a2a00;
+  font-weight: 800;
+  box-shadow: 0 4px 0 #b88600;
+}
+.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.small {
+  padding: 7px 11px;
+  font-size: 13px;
+  min-height: 34px;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (hover: hover) and (pointer: fine) {
+  .primary:hover {
+    filter: brightness(1.05);
+  }
+  .ghost:hover {
+    background: var(--panel2);
+  }
+}

@@ -1,0 +1,215 @@
+/* face-down reserve backs: real tier art (base) / green CSS back (Pokémart) */
+.mini-card.card-back {
+  background: linear-gradient(135deg, #3a2a6e, #221a4a) center/cover no-repeat;
+}
+.mini-card.card-back[data-tier='stage1'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.5), rgba(8, 10, 30, 0.65)), url(/assets/backs/stage1.webp);
+}
+.mini-card.card-back[data-tier='stage2'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.5), rgba(8, 10, 30, 0.65)), url(/assets/backs/stage2.webp);
+}
+.mini-card.card-back[data-tier='stage3'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.5), rgba(8, 10, 30, 0.65)), url(/assets/backs/stage3.webp);
+}
+.mini-card.card-back[data-tier='rare'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.5), rgba(8, 10, 30, 0.65)), url(/assets/backs/rare.webp);
+}
+.mini-card.card-back[data-tier='legend'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.5), rgba(8, 10, 30, 0.65)), url(/assets/backs/legend.webp);
+}
+.mini-card.card-back[data-tier='pmL1'],
+.mini-card.card-back[data-tier='pmL2'],
+.mini-card.card-back[data-tier='pmL3'] {
+  background-image:
+    linear-gradient(
+      135deg,
+      rgba(46, 209, 122, 0.3),
+      rgba(76, 175, 80, 0.2) 50%,
+      rgba(46, 209, 122, 0.25)
+    ),
+    linear-gradient(160deg, #0d3a1a, #1a5c2a 40%, #0f4620);
+}
+.reserve-zone {
+  flex: none;
+  margin-left: auto;
+  border-left: 1px dashed var(--line);
+  padding-left: 12px;
+  min-width: 72px;
+}
+.reserve-zone .rz-title {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.reserve-zone > .pcards {
+  flex-wrap: nowrap;
+}
+.buried-badge {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* turn passing overlay (hotseat) */
+#pass-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 24, 0.94);
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+}
+#pass-overlay .po-inner {
+  max-width: 420px;
+}
+#pass-overlay h2 {
+  font-size: clamp(22px, 6vw, 26px);
+  margin: 0 0 6px;
+}
+#pass-overlay p {
+  color: var(--muted);
+}
+
+/* ai thinking */
+.thinking {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--gold);
+  font-weight: 700;
+}
+.thinking .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: bounce 0.9s infinite;
+}
+.thinking .dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thinking .dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes bounce {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* desktop hover zoom preview */
+#zoom {
+  position: fixed;
+  z-index: 80;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.6));
+}
+#zoom img {
+  width: 260px;
+  height: 347px;
+  border-radius: 14px;
+  border: 2px solid var(--gold);
+}
+
+/* tap-to-inspect overlay (touch) */
+#inspect {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: rgba(6, 8, 24, 0.86);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(20px, var(--sa-t)) max(20px, var(--sa-r)) max(20px, var(--sa-b))
+    max(20px, var(--sa-l));
+}
+#inspect-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 100%;
+}
+#inspect-img {
+  width: min(78vw, 340px);
+  height: auto;
+  aspect-ratio: 3/4;
+  border-radius: 14px;
+  border: 3px solid var(--gold);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+  background: #0c1030;
+}
+#inspect-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+#inspect-actions button {
+  padding: 13px 22px;
+  font-size: 15px;
+  min-height: 48px;
+}
+
+/* win modal */
+.modal-box.win {
+  text-align: center;
+}
+#win-content h2 {
+  font-size: clamp(24px, 7vw, 30px);
+}
+.win-trophy {
+  font-size: 60px;
+}
+.win-scores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 14px 0;
+}
+.win-scores .wrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px;
+}
+.win-scores .wrow.winner {
+  border-color: var(--gold);
+  background: rgba(255, 213, 74, 0.12);
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.pop {
+  animation: pop 0.35s ease;
+}

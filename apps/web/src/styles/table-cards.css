@@ -1,0 +1,170 @@
+/* field rows */
+.tier-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px;
+}
+.tier-label {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 3px;
+  width: 24px;
+  text-align: center;
+  flex: none;
+}
+.tier-special .tier-label {
+  color: var(--gold);
+}
+.deck-pile {
+  flex: none;
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 10px;
+  border: 2px dashed var(--line);
+  display: grid;
+  place-items: center;
+  position: relative;
+  background: linear-gradient(135deg, #222a63, #161b42);
+  background-size: cover;
+  background-position: center;
+  cursor: default;
+  overflow: hidden;
+}
+/* real tier card-back art from the TTS mod (darkened so the count stays legible) */
+.deck-pile[data-tier='stage1'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.4), rgba(8, 10, 30, 0.62)), url(/assets/backs/stage1.webp);
+}
+.deck-pile[data-tier='stage2'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.4), rgba(8, 10, 30, 0.62)), url(/assets/backs/stage2.webp);
+}
+.deck-pile[data-tier='stage3'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.4), rgba(8, 10, 30, 0.62)), url(/assets/backs/stage3.webp);
+}
+.deck-pile[data-tier='rare'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.4), rgba(8, 10, 30, 0.62)), url(/assets/backs/rare.webp);
+}
+.deck-pile[data-tier='legend'] {
+  background-image:
+    linear-gradient(rgba(8, 10, 30, 0.4), rgba(8, 10, 30, 0.62)), url(/assets/backs/legend.webp);
+}
+/* Pokémart has no TTS back → CSS-generated green "shop" back (layered gradients for depth) */
+.deck-pile[data-tier='pmL1'],
+.deck-pile[data-tier='pmL2'],
+.deck-pile[data-tier='pmL3'] {
+  background-image:
+    linear-gradient(
+      135deg,
+      rgba(46, 209, 122, 0.25),
+      rgba(76, 175, 80, 0.15) 50%,
+      rgba(46, 209, 122, 0.2)
+    ),
+    radial-gradient(circle at 30% 70%, rgba(76, 175, 80, 0.1), transparent 60%),
+    linear-gradient(160deg, #0d3a1a, #1a5c2a 40%, #0f4620);
+}
+/* count → small corner badge so the back art reads (min-width fits 2-digit counts like 35) */
+.deck-pile .count {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  font-weight: 800;
+  font-size: 13px;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  min-width: 24px;
+  height: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  z-index: 2;
+}
+.deck-pile.reservable {
+  cursor: pointer;
+  border-style: solid;
+}
+.deck-pile .deck-tag {
+  display: none;
+}
+.card-strip {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+/* card */
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative;
+  flex: none;
+  cursor: pointer;
+  background: #0c1030;
+  border: 2px solid transparent;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  transition:
+    0.12s transform,
+    0.12s box-shadow;
+}
+.card img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.card.affordable {
+  border-color: var(--good);
+  box-shadow:
+    0 0 0 2px rgba(70, 209, 122, 0.5),
+    0 6px 14px rgba(0, 0, 0, 0.4);
+}
+/* Affordable with Master Balls keeps a subtle purple outline; exact cost lives
+   in the transaction dock so card artwork stays clean. */
+.card.affordable-wild {
+  border-color: var(--purple);
+  box-shadow:
+    0 0 0 2px rgba(122, 79, 192, 0.75),
+    0 6px 14px rgba(0, 0, 0, 0.4);
+}
+.card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(255, 213, 74, 0.6);
+}
+.card .empty-slot {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: repeating-linear-gradient(45deg, #141a40, #141a40 6px, #11163a 6px, #11163a 12px);
+}
+.card-back {
+  background: linear-gradient(135deg, #3a2a6e, #221a4a);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-4px) scale(1.03);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+    z-index: 5;
+  }
+  .deck-pile.reservable:hover {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 2px rgba(255, 213, 74, 0.3);
+  }
+}

@@ -1,0 +1,336 @@
+/* ---------- game shell ---------- */
+#game {
+  min-height: var(--app-h);
+}
+#game-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(10, 13, 40, 0.96);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(4, 6, 24, 0.24);
+}
+#topbar {
+  --turn-accent: var(--gold);
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: calc(5px + var(--sa-t)) max(14px, var(--sa-r)) 5px max(14px, var(--sa-l));
+  border-bottom: 1px solid var(--turn-accent);
+  background: linear-gradient(90deg, #0b0e2d, #10163d);
+  transition: 0.18s border-color;
+}
+#topbar.turn-mine {
+  --turn-accent: #ffe66a;
+}
+#topbar.turn-wait {
+  --turn-accent: #8edcff;
+}
+#topbar.turn-ai {
+  --turn-accent: #d8b5ff;
+}
+#topbar.turn-over {
+  --turn-accent: #91f0b6;
+}
+.brand-mini {
+  font-weight: 800;
+  color: var(--gold);
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-left {
+  min-width: 0;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.topbar-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+#board {
+  min-width: 0;
+}
+#field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+#controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+#action-bar.action-idle {
+  display: none;
+}
+
+/* tablet / desktop: supply and four card rows form one centered public table */
+@media (min-width: 861px) {
+  :root {
+    --card-w: clamp(82px, 6.3vw, 108px);
+    --supply-size: clamp(72px, calc(5.6vw - 1px), 95px);
+  }
+  #game {
+    display: grid;
+    align-content: start;
+    row-gap: 0;
+    column-gap: 0;
+    padding: 12px;
+    isolation: isolate;
+    grid-template-columns: minmax(0, 1fr) 136px max-content minmax(0, 1fr);
+    grid-template-areas:
+      'head    head    head  head'
+      '.       supply board .'
+      'players players players players';
+  }
+  /* One shared League table beneath supply, cards and contextual actions.
+     The negative margin adds a visible rim without changing the public area's height. */
+  #game::before {
+    content: '';
+    grid-row: 2;
+    grid-column: 2/4;
+    align-self: stretch;
+    margin: -9px -11px;
+    z-index: -2;
+    pointer-events: none;
+    border-radius: 27px;
+    background:
+      radial-gradient(ellipse at 52% 44%, rgba(66, 124, 205, 0.22), transparent 62%),
+      repeating-linear-gradient(112deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 9px),
+      linear-gradient(145deg, #172252 0%, #10183e 52%, #1b1948 100%);
+    border: 1px solid rgba(126, 205, 255, 0.38);
+    box-shadow:
+      0 22px 46px rgba(2, 5, 23, 0.48),
+      inset 0 0 0 4px #090e2d,
+      inset 0 0 0 6px rgba(255, 213, 74, 0.3),
+      inset 0 0 42px rgba(3, 6, 25, 0.56);
+  }
+  /* Embossed Poké Ball court mark: visible through the translucent card lanes. */
+  #game::after {
+    content: '';
+    grid-row: 2;
+    grid-column: 3;
+    place-self: center;
+    width: 132px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.32;
+    background:
+      linear-gradient(
+        transparent calc(50% - 2px),
+        rgba(159, 220, 255, 0.8) calc(50% - 1px),
+        rgba(159, 220, 255, 0.8) calc(50% + 1px),
+        transparent calc(50% + 2px)
+      ),
+      radial-gradient(
+        circle,
+        rgba(255, 213, 74, 0.9) 0 9%,
+        #10183e 10% 15%,
+        rgba(135, 209, 255, 0.76) 16% 18%,
+        transparent 19% 43%,
+        rgba(135, 209, 255, 0.72) 44% 46%,
+        transparent 47%
+      );
+    box-shadow: 0 0 34px rgba(86, 171, 255, 0.18);
+  }
+  #game-head {
+    grid-area: head;
+    margin: -12px -12px 0;
+  }
+  #board {
+    grid-area: board;
+    display: flex;
+    justify-content: flex-start;
+    align-items: stretch;
+    min-width: 0;
+    position: relative;
+    z-index: 1;
+  }
+  #field {
+    width: max-content;
+    max-width: 100%;
+    height: 100%;
+    justify-content: space-between;
+  }
+  #controls {
+    display: contents;
+  }
+  #supply {
+    grid-area: supply;
+    align-self: stretch;
+    justify-self: stretch;
+    width: 136px;
+    min-height: 0;
+    justify-content: space-between;
+    border: 0;
+    border-radius: 0;
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    box-shadow: none;
+  }
+  #supply .supply-row {
+    width: var(--supply-size);
+    height: var(--supply-size);
+  }
+  #supply .supply-row .ball {
+    width: clamp(42px, calc(var(--supply-size) - 24px), 70px);
+    height: clamp(42px, calc(var(--supply-size) - 24px), 70px);
+  }
+  #field .tier-row {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  #field .tier-special > .deck-pile[data-tier='rare'] {
+    margin-left: var(--card-w);
+  }
+  /* Three quiet lane marks replace boxed sub-panels on the shared tabletop. */
+  #supply::before,
+  #board::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      rgba(144, 202, 255, 0.2) 12%,
+      rgba(255, 213, 74, 0.16) 50%,
+      rgba(144, 202, 255, 0.2) 88%,
+      transparent
+    );
+    box-shadow: 0 0 9px rgba(91, 166, 235, 0.08);
+  }
+  #action-bar {
+    position: fixed;
+    z-index: 44;
+    right: 12px;
+    top: 84px;
+    width: 300px;
+    max-height: calc(100svh - 96px);
+    overflow: auto;
+    box-shadow: 0 14px 40px rgba(2, 4, 20, 0.55);
+  }
+  #action-bar.action-card {
+    top: 50%;
+    transform: translateY(-50%);
+    overflow: visible;
+  }
+  #players {
+    grid-area: players;
+    margin-top: 12px;
+  }
+  .tier-row,
+  .card-strip {
+    flex-wrap: nowrap;
+  }
+}
+
+/* true wide desktop: reserve a permanent contextual-action column */
+@media (min-width: 1281px) {
+  #game {
+    grid-template-columns: minmax(0, 1fr) 136px max-content 312px minmax(0, 1fr);
+    grid-template-areas: 'head head head head head' '. supply board action .' 'players players players players players';
+  }
+  #game::before {
+    grid-column: 2/5;
+  }
+  #action-bar {
+    grid-area: action;
+    position: relative;
+    z-index: 1;
+    top: auto;
+    right: auto;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: auto;
+    margin-left: 12px;
+    max-height: none;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+  }
+  #action-bar.action-card {
+    top: auto;
+    overflow: visible;
+    transform: none;
+  }
+  #action-bar.action-idle {
+    display: block;
+    align-self: stretch;
+    min-height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  #action-bar.action-idle::after {
+    content: '';
+    position: absolute;
+    inset: 26px 18px;
+    background: url(/assets/tabletop-engraving.svg?v=17) center/contain no-repeat;
+    opacity: 0.14;
+    filter: drop-shadow(1px 1px 0 rgba(142, 203, 236, 0.34))
+      drop-shadow(-1px -1px 0 rgba(3, 7, 27, 0.8));
+    pointer-events: none;
+  }
+  #action-bar::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent,
+      rgba(144, 202, 255, 0.2) 12%,
+      rgba(255, 213, 74, 0.16) 50%,
+      rgba(144, 202, 255, 0.2) 88%,
+      transparent
+    );
+    box-shadow: 0 0 9px rgba(91, 166, 235, 0.08);
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1100px) {
+  #topbar {
+    grid-template-columns: minmax(110px, 1fr) auto;
+    gap: 8px;
+  }
+  .brand-mini {
+    font-size: 13px;
+  }
+  .topbar-action span:last-child {
+    display: none;
+  }
+  .topbar-action {
+    width: 38px;
+    padding: 7px;
+  }
+  .idle-bar span {
+    padding: 7px 8px;
+    font-size: 10px;
+  }
+}

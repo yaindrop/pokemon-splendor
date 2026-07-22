@@ -1,7 +1,6 @@
-import { randomBytes, randomUUID } from 'node:crypto';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { TLSSocket } from 'node:tls';
 import {
   AI,
   Room as RoomModule,
@@ -13,10 +12,22 @@ import {
   megas as MEGA_DB,
   pokemart as POKEMART_DB,
 } from '@pokemon-splendor/game-data';
-import { isClientMessage, type RoomClientMessage } from '@pokemon-splendor/protocol';
+import type { RoomClientMessage } from '@pokemon-splendor/protocol';
 import { WebSocket, WebSocketServer } from 'ws';
 import { FileRoomStore, type RoomEnvelope, type RoomStore } from './file-room-store.js';
+import {
+  clientIp,
+  consumeFixedWindow,
+  json,
+  normalizeName,
+  randomToken,
+  requestOriginAllowed,
+  validMessage,
+  type FixedWindowBucket,
+} from './http-utils.js';
 import { isRoomCode, randomRoomCode } from './room-code.js';
+
+export { normalizeName, validMessage } from './http-utils.js';
 
 const ROOM_PATH = /^\/room\/([^/]+)\/ws$/;
 const MAX_CONNECTIONS_PER_ROOM = 12;
@@ -29,11 +40,6 @@ const MUTATING_MESSAGES = new Set<RoomClientMessage['t']>([
   'undo-request',
   'undo-vote',
 ]);
-
-interface FixedWindowBucket {
-  startedAt: number;
-  count: number;
-}
 
 interface RoomSessionOptions {
   readonly lobbyDisconnectGraceMs?: number;
@@ -52,74 +58,6 @@ export interface RoomServer {
   listen(): Promise<void>;
   address(): AddressInfo;
   close(): Promise<void>;
-}
-
-function json(response: ServerResponse, status: number, body: unknown): void {
-  const data = JSON.stringify(body);
-  response.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(data),
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  });
-  response.end(data);
-}
-
-function randomToken(): string {
-  return randomBytes(32).toString('hex');
-}
-
-export function normalizeName(value: unknown): string {
-  if (typeof value !== 'string') return '训练家';
-  const name = Array.from(value.normalize('NFKC'))
-    .filter((character) => {
-      const codePoint = character.codePointAt(0) ?? 0;
-      return codePoint >= 32 && codePoint !== 127 && !`<>&"'\``.includes(character);
-    })
-    .join('')
-    .trim();
-  return Array.from(name).slice(0, 20).join('') || '训练家';
-}
-
-export function validMessage(message: unknown): message is RoomClientMessage {
-  return isClientMessage(message);
-}
-
-function requestOriginAllowed(
-  request: IncomingMessage,
-  configuredOrigins: ReadonlySet<string>,
-): boolean {
-  const origin = request.headers.origin;
-  if (!origin) return true;
-  if (configuredOrigins.has(origin)) return true;
-  const forwardedProto = String(request.headers['x-forwarded-proto'] ?? '')
-    .split(',')[0]
-    ?.trim();
-  const protocol = forwardedProto ?? (request.socket instanceof TLSSocket ? 'https' : 'http');
-  const host = request.headers.host;
-  return typeof host === 'string' && origin === `${protocol}://${host}`;
-}
-
-function clientIp(request: IncomingMessage): string {
-  return (
-    String(request.headers['x-forwarded-for'] ?? request.socket.remoteAddress ?? '')
-      .split(',')[0]
-      ?.trim() ?? ''
-  );
-}
-
-function consumeFixedWindow(
-  buckets: Map<string, FixedWindowBucket>,
-  key: string,
-  now: number,
-  windowMs: number,
-  limit: number,
-): boolean {
-  let bucket = buckets.get(key);
-  if (!bucket || now - bucket.startedAt >= windowMs) bucket = { startedAt: now, count: 0 };
-  bucket.count += 1;
-  buckets.set(key, bucket);
-  return bucket.count <= limit;
 }
 
 class RoomSession {
